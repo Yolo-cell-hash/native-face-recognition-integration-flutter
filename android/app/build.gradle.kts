@@ -32,11 +32,18 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+
+
             signingConfig = signingConfigs.getByName("debug")
+
+    
         }
     }
+}
+
+dependencies {
+    // ... other dependencies
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0") // Or the version matching your tflite_flutter requirement
 }
 
 flutter {
