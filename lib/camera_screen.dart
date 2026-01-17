@@ -249,7 +249,7 @@ class _CameraScreenState extends State<CameraScreen>
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Welcome $personName! Unlocking Godrej Lock...',
+                      'Welcome $personName! Unlocking Godrej Lock... Distance: ${distance.toStringAsFixed(4)}',
                     ),
                   ),
                 ],

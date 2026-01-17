@@ -17,7 +17,7 @@
     <uses-feature android:name="android.hardware.camera.front" android:required="true"/>
 
     <application
-        android:label="edge_based_ai"
+        android:label="HMUAT"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

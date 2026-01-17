@@ -14,7 +14,7 @@ class FaceRecognitionService {
   static const String _modelPath =
       'assets/models/transfer-learningv4_int8.tflite';
   static const int _inputSize = 128;
-  static const double _verificationThreshold = 1.4; // Matching Python threshold
+  static const double _verificationThreshold = 1.9; // Matching Python threshold
   static const double _samePersonThreshold = 0.92; // For enrollment validation
 
   Interpreter? _interpreter;
