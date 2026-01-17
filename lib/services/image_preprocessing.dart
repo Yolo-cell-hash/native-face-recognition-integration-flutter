@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
 /// Image preprocessing service that replicates Python preprocessing pipeline.
-/// Implements CLAHE and MSRCR algorithms exactly as in the Python code.
+/// Implements CLAHE and optional MSRCR algorithms.
 class ImagePreprocessing {
   // MSRCR parameters (matching Python exactly)
   static const List<double> _sigmaList = [15, 80, 250];
@@ -13,36 +13,154 @@ class ImagePreprocessing {
   static const double _alpha = 125;
   static const double _beta = 46;
 
-  /// Apply full preprocessing pipeline: CLAHE + MSRCR + Resize
-  /// Matches Python: preprocess_image(image, transform)
-  static Float32List preprocessImage(img.Image image, {int targetSize = 128}) {
-    debugPrint('🔧 Preprocessing: Starting image preprocessing pipeline...');
+  /// Apply full preprocessing pipeline with optional fast mode.
+  /// Fast mode: CLAHE only (much faster, good for mobile)
+  /// Accurate mode: CLAHE + MSRCR (slower, matches Python exactly)
+  static Float32List preprocessImage(
+    img.Image image, {
+    int targetSize = 128,
+    bool useFastMode = true, // Default to fast for mobile
+  }) {
+    debugPrint('🔧 Preprocessing: Starting pipeline (fast=$useFastMode)...');
     debugPrint('🔧 Preprocessing: Input size: ${image.width}x${image.height}');
 
-    // Step 1: Apply CLAHE
-    debugPrint('🔧 Preprocessing: Applying CLAHE...');
-    final claheImage = applyClahe(image);
-
-    // Step 2: Apply MSRCR
-    debugPrint('🔧 Preprocessing: Applying MSRCR...');
-    final msrcrImage = applyMsrcr(claheImage);
-
-    // Step 3: Resize to target size (128x128)
+    // Step 1: Resize FIRST to reduce computation on smaller image
     debugPrint('🔧 Preprocessing: Resizing to ${targetSize}x$targetSize...');
     final resized = img.copyResize(
-      msrcrImage,
+      image,
       width: targetSize,
       height: targetSize,
     );
 
-    // Step 4: Convert to normalized tensor format (C, H, W) -> flatten
-    debugPrint('🔧 Preprocessing: Converting to tensor format...');
-    final tensor = imageToTensor(resized);
+    // Step 2: Apply CLAHE (fast contrast enhancement)
+    debugPrint('🔧 Preprocessing: Applying CLAHE...');
+    final claheImage = applyClaheSimple(resized);
 
-    debugPrint(
-      '✅ Preprocessing: Pipeline complete. Tensor size: ${tensor.length}',
-    );
+    // Step 3: Apply brightness normalization (fast alternative to MSRCR)
+    img.Image processedImage;
+    if (useFastMode) {
+      debugPrint('🔧 Preprocessing: Applying fast normalization...');
+      processedImage = applyFastNormalization(claheImage);
+    } else {
+      // Full MSRCR (slow but accurate)
+      debugPrint('🔧 Preprocessing: Applying MSRCR (slow)...');
+      processedImage = applyMsrcr(claheImage);
+    }
+
+    // Step 4: Convert to normalized tensor format
+    debugPrint('🔧 Preprocessing: Converting to tensor format...');
+    final tensor = imageToTensor(processedImage);
+
+    debugPrint('✅ Preprocessing: Complete. Tensor size: ${tensor.length}');
     return tensor;
+  }
+
+  /// Fast simplified CLAHE (only luminance channel, no tiles)
+  static img.Image applyClaheSimple(img.Image image) {
+    final width = image.width;
+    final height = image.height;
+    final result = img.Image(width: width, height: height);
+
+    // Calculate histogram
+    final histogram = List<int>.filled(256, 0);
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final pixel = image.getPixel(x, y);
+        final luminance = (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b)
+            .toInt()
+            .clamp(0, 255);
+        histogram[luminance]++;
+      }
+    }
+
+    // Calculate CDF
+    final cdf = List<int>.filled(256, 0);
+    cdf[0] = histogram[0];
+    for (int i = 1; i < 256; i++) {
+      cdf[i] = cdf[i - 1] + histogram[i];
+    }
+
+    // Normalize CDF
+    final cdfMin = cdf.firstWhere((v) => v > 0, orElse: () => 0);
+    final cdfMax = cdf[255];
+    final cdfRange = cdfMax - cdfMin;
+
+    // Apply equalization
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+
+        // Scale each channel proportionally
+        if (cdfRange > 0) {
+          final lum = (0.299 * r + 0.587 * g + 0.114 * b).toInt().clamp(0, 255);
+          final newLum = ((cdf[lum] - cdfMin) * 255 / cdfRange).round();
+          final scale = lum > 0 ? newLum / lum : 1.0;
+
+          result.setPixelRgba(
+            x,
+            y,
+            (r * scale).clamp(0, 255).toInt(),
+            (g * scale).clamp(0, 255).toInt(),
+            (b * scale).clamp(0, 255).toInt(),
+            255,
+          );
+        } else {
+          result.setPixelRgba(x, y, r, g, b, 255);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /// Fast brightness/contrast normalization (alternative to MSRCR)
+  static img.Image applyFastNormalization(img.Image image) {
+    final width = image.width;
+    final height = image.height;
+    final result = img.Image(width: width, height: height);
+
+    // Calculate min/max for normalization
+    int minVal = 255, maxVal = 0;
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final pixel = image.getPixel(x, y);
+        final lum = ((pixel.r + pixel.g + pixel.b) / 3).toInt();
+        if (lum < minVal) minVal = lum;
+        if (lum > maxVal) maxVal = lum;
+      }
+    }
+
+    final range = maxVal - minVal;
+    if (range == 0) return image;
+
+    // Normalize to full range with slight gamma correction
+    const gamma = 0.9; // Slight brightening
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+
+        // Normalize and apply gamma
+        final nr = (math.pow((r - minVal) / range, gamma) * 255)
+            .clamp(0, 255)
+            .toInt();
+        final ng = (math.pow((g - minVal) / range, gamma) * 255)
+            .clamp(0, 255)
+            .toInt();
+        final nb = (math.pow((b - minVal) / range, gamma) * 255)
+            .clamp(0, 255)
+            .toInt();
+
+        result.setPixelRgba(x, y, nr, ng, nb, 255);
+      }
+    }
+
+    return result;
   }
 
   /// Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)

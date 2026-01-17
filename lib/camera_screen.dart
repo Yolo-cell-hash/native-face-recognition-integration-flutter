@@ -605,7 +605,13 @@ class _CameraScreenState extends State<CameraScreen>
                           MaterialPageRoute(
                             builder: (context) => const UserManagementScreen(),
                           ),
-                        );
+                        ).then((_) {
+                          // Reinitialize camera when returning from user management
+                          debugPrint(
+                            '🎬 CameraScreen: Returned from user management, reinitializing camera...',
+                          );
+                          _initializeCamera();
+                        });
                       },
                       icon: Container(
                         padding: const EdgeInsets.all(8),

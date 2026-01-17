@@ -339,17 +339,62 @@ class _EnrollScreenState extends State<EnrollScreen>
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            debugPrint('📝 EnrollScreen: Back button pressed');
-            Navigator.pop(context);
-          },
+          onPressed: _isEnrolling
+              ? null
+              : () {
+                  debugPrint('📝 EnrollScreen: Back button pressed');
+                  Navigator.pop(context);
+                },
         ),
         title: const Text(
           'Enroll New User',
           style: TextStyle(color: Colors.white),
         ),
       ),
-      body: SafeArea(child: _buildBody()),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            _buildBody(),
+            // Loading overlay during enrollment
+            if (_isEnrolling)
+              Container(
+                color: Colors.black.withOpacity(0.8),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 60,
+                        height: 60,
+                        child: CircularProgressIndicator(
+                          color: Colors.blue,
+                          strokeWidth: 4,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Processing Face...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Detecting face and computing embedding',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

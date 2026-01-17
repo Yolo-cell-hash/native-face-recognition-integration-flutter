@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'models/user_model.dart';
 import 'services/user_storage_service.dart';
+import 'services/embedding_storage.dart';
 import 'enroll_screen.dart';
 
 class UserManagementScreen extends StatefulWidget {
@@ -78,8 +79,15 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
     if (confirmed == true) {
       try {
+        // Delete from UI storage
         await _storage.deleteUser(user.id);
-        debugPrint('✅ UserManagement: User deleted successfully');
+
+        // Also delete from embedding storage (important for face recognition!)
+        await EmbeddingStorage.deleteUserEmbeddings(user.name);
+
+        debugPrint(
+          '✅ UserManagement: User and embeddings deleted successfully',
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
