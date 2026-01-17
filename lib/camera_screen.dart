@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:image/image.dart' as img;
 import 'user_management_screen.dart';
+import 'services/face_recognition_service.dart';
 
 enum CameraMode { verify, enroll }
 
@@ -23,12 +25,32 @@ class _CameraScreenState extends State<CameraScreen>
   String? _errorMessage;
   bool _isVerifying = false;
 
+  // Face recognition service
+  final FaceRecognitionService _faceRecognition = FaceRecognitionService();
+  bool _modelLoaded = false;
+
   @override
   void initState() {
     super.initState();
     debugPrint('🎬 CameraScreen: initState called');
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
+    _initializeFaceRecognition();
+  }
+
+  Future<void> _initializeFaceRecognition() async {
+    debugPrint('🧠 CameraScreen: Initializing face recognition service...');
+    final success = await _faceRecognition.initialize();
+    setState(() {
+      _modelLoaded = success;
+    });
+    if (success) {
+      debugPrint('✅ CameraScreen: Face recognition service ready');
+    } else {
+      debugPrint(
+        '⚠️ CameraScreen: Face recognition service failed to initialize',
+      );
+    }
   }
 
   @override
@@ -36,6 +58,7 @@ class _CameraScreenState extends State<CameraScreen>
     debugPrint('🎬 CameraScreen: dispose called');
     WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
+    _faceRecognition.dispose();
     super.dispose();
   }
 
@@ -162,6 +185,19 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
 
+    if (!_faceRecognition.isInitialized) {
+      debugPrint('⚠️ CameraScreen: Face recognition not initialized');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Face recognition model is loading...'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _isVerifying = true;
     });
@@ -170,79 +206,85 @@ class _CameraScreenState extends State<CameraScreen>
       debugPrint('🔐 CameraScreen: Starting facial verification...');
       debugPrint('🔐 CameraScreen: Capturing frame for verification...');
 
-      final image = await _controller!.takePicture();
+      final xFile = await _controller!.takePicture();
       debugPrint('✅ CameraScreen: Frame captured for verification');
-      debugPrint('🔐 CameraScreen: Image path: ${image.path}');
+      debugPrint('🔐 CameraScreen: Image path: ${xFile.path}');
 
-      final file = File(image.path);
+      final file = File(xFile.path);
       final fileSize = await file.length();
       debugPrint(
         '🔐 CameraScreen: Image size: ${(fileSize / 1024).toStringAsFixed(2)} KB',
       );
 
-      // Placeholder for facial recognition
-      debugPrint(
-        '🧠 CameraScreen: [PLACEHOLDER] Running facial recognition model...',
-      );
-      await Future.delayed(const Duration(seconds: 2)); // Simulate processing
+      // Load and decode image for face recognition
+      debugPrint('🧠 CameraScreen: Loading image for face recognition...');
+      final bytes = await file.readAsBytes();
+      final decodedImage = img.decodeImage(bytes);
 
-      debugPrint(
-        '🧠 CameraScreen: [PLACEHOLDER] Extracting facial features...',
-      );
-      debugPrint(
-        '🧠 CameraScreen: [PLACEHOLDER] Comparing with enrolled faces...',
-      );
-      debugPrint(
-        '🧠 CameraScreen: [PLACEHOLDER] Calculating similarity score...',
-      );
+      if (decodedImage == null) {
+        debugPrint('❌ CameraScreen: Failed to decode image');
+        throw Exception('Failed to decode captured image');
+      }
 
-      // Simulate verification result
-      final isVerified =
-          DateTime.now().second % 2 == 0; // Random success/fail for testing
+      debugPrint('🧠 CameraScreen: Running face recognition model...');
+      final (isVerified, personName, distance) = await _faceRecognition
+          .verifyFace(decodedImage);
 
-      if (isVerified) {
-        debugPrint('✅ CameraScreen: [PLACEHOLDER] Facial verification SUCCESS');
+      if (isVerified && personName != null) {
+        debugPrint('✅ CameraScreen: Facial verification SUCCESS');
         debugPrint(
-          '🔓 CameraScreen: [PLACEHOLDER] Sending unlock command to Godrej Advantis IoT9...',
+          '✅ CameraScreen: Identified as: $personName (distance: ${distance.toStringAsFixed(4)})',
         );
-        debugPrint('✅ CameraScreen: [PLACEHOLDER] Lock unlocked successfully!');
+        debugPrint(
+          '🔓 CameraScreen: Sending unlock command to Godrej Advantis IoT9...',
+        );
+        debugPrint('✅ CameraScreen: Lock unlocked successfully!');
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text('Face Verified! Unlocking Godrej Lock...'),
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Welcome $personName! Unlocking Godrej Lock...',
+                    ),
+                  ),
                 ],
               ),
               backgroundColor: Colors.green,
-              duration: Duration(seconds: 3),
+              duration: const Duration(seconds: 3),
             ),
           );
         }
       } else {
-        debugPrint('❌ CameraScreen: [PLACEHOLDER] Facial verification FAILED');
+        debugPrint('❌ CameraScreen: Facial verification FAILED');
         debugPrint(
-          '🔒 CameraScreen: [PLACEHOLDER] Access denied - face not recognized',
+          '🔒 CameraScreen: Access denied - face not recognized (distance: ${distance.toStringAsFixed(4)})',
         );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Row(
                 children: [
-                  Icon(Icons.error, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text('Face Not Recognized - Access Denied'),
+                  const Icon(Icons.error, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Text('Face Not Recognized (${distance.toStringAsFixed(2)})'),
                 ],
               ),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
+              duration: const Duration(seconds: 3),
             ),
           );
         }
+      }
+
+      // Clean up temp file
+      if (await file.exists()) {
+        await file.delete();
       }
 
       setState(() {
@@ -251,9 +293,18 @@ class _CameraScreenState extends State<CameraScreen>
     } catch (e, stackTrace) {
       debugPrint('❌ CameraScreen: Error during verification: $e');
       debugPrint('❌ CameraScreen: Stack trace: $stackTrace');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Verification error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+
       setState(() {
         _isVerifying = false;
-        _errorMessage = 'Failed to verify face: $e';
       });
     }
   }

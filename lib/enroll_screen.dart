@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:image/image.dart' as img;
 import 'models/user_model.dart';
 import 'services/user_storage_service.dart';
+import 'services/face_recognition_service.dart';
 
 class EnrollScreen extends StatefulWidget {
   const EnrollScreen({super.key});
@@ -20,9 +22,14 @@ class _EnrollScreenState extends State<EnrollScreen>
   bool _isInitialized = false;
   String? _errorMessage;
   bool _isCapturing = false;
+  bool _isEnrolling = false;
   XFile? _capturedImage;
   final TextEditingController _nameController = TextEditingController();
   final UserStorageService _storage = UserStorageService();
+
+  // Face recognition service
+  final FaceRecognitionService _faceRecognition = FaceRecognitionService();
+  bool _modelLoaded = false;
 
   @override
   void initState() {
@@ -30,6 +37,22 @@ class _EnrollScreenState extends State<EnrollScreen>
     debugPrint('📝 EnrollScreen: initState called');
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
+    _initializeFaceRecognition();
+  }
+
+  Future<void> _initializeFaceRecognition() async {
+    debugPrint('🧠 EnrollScreen: Initializing face recognition service...');
+    final success = await _faceRecognition.initialize();
+    setState(() {
+      _modelLoaded = success;
+    });
+    if (success) {
+      debugPrint('✅ EnrollScreen: Face recognition service ready');
+    } else {
+      debugPrint(
+        '⚠️ EnrollScreen: Face recognition service failed to initialize',
+      );
+    }
   }
 
   @override
@@ -38,6 +61,7 @@ class _EnrollScreenState extends State<EnrollScreen>
     WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
     _nameController.dispose();
+    _faceRecognition.dispose();
     super.dispose();
   }
 
@@ -163,19 +187,85 @@ class _EnrollScreenState extends State<EnrollScreen>
       return;
     }
 
+    if (!_faceRecognition.isInitialized) {
+      debugPrint('⚠️ EnrollScreen: Face recognition not initialized');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Face recognition model is loading...'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isEnrolling = true;
+    });
+
     try {
       debugPrint('📝 EnrollScreen: Starting enrollment for user: $name');
 
-      // Save photo to permanent location
+      // Load and decode image
+      debugPrint('🧠 EnrollScreen: Loading image for face recognition...');
+      final imageFile = File(_capturedImage!.path);
+      final bytes = await imageFile.readAsBytes();
+      final decodedImage = img.decodeImage(bytes);
+
+      if (decodedImage == null) {
+        throw Exception('Failed to decode image');
+      }
+
+      // Check if user is already registered with this face
+      debugPrint('🧠 EnrollScreen: Checking if face is already registered...');
+      final (isRegistered, existingName) = await _faceRecognition
+          .isUserRegistered(decodedImage);
+
+      if (isRegistered && existingName != null) {
+        debugPrint(
+          '⚠️ EnrollScreen: Face is already registered as: $existingName',
+        );
+        setState(() {
+          _isEnrolling = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.warning, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'This face is already registered as "$existingName"',
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Enroll user with face recognition (computes and saves embedding)
+      debugPrint('🧠 EnrollScreen: Computing face embedding...');
+      final success = await _faceRecognition.enrollUser(name, decodedImage);
+
+      if (!success) {
+        throw Exception('Face detection failed - no face found in image');
+      }
+
+      // Save photo to permanent location (for display purposes)
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final photoPath = '${directory.path}/user_${timestamp}_photo.jpg';
-
-      final File imageFile = File(_capturedImage!.path);
       await imageFile.copy(photoPath);
       debugPrint('📝 EnrollScreen: Photo saved to: $photoPath');
 
-      // Create user model
+      // Create user model for UI display
       final user = UserModel(
         id: timestamp.toString(),
         name: name,
@@ -183,9 +273,15 @@ class _EnrollScreenState extends State<EnrollScreen>
         enrolledAt: DateTime.now(),
       );
 
-      // Save to storage
+      // Save to storage (for user list display)
       await _storage.addUser(user);
-      debugPrint('✅ EnrollScreen: User enrolled successfully - $user');
+      debugPrint(
+        '✅ EnrollScreen: User enrolled successfully with face embedding',
+      );
+
+      setState(() {
+        _isEnrolling = false;
+      });
 
       if (!mounted) return;
 
@@ -195,7 +291,7 @@ class _EnrollScreenState extends State<EnrollScreen>
             children: [
               const Icon(Icons.check_circle, color: Colors.white),
               const SizedBox(width: 12),
-              Text('$name enrolled successfully!'),
+              Expanded(child: Text('$name enrolled successfully!')),
             ],
           ),
           backgroundColor: Colors.green,
@@ -203,7 +299,7 @@ class _EnrollScreenState extends State<EnrollScreen>
         ),
       );
 
-      // Return to home screen
+      // Return to previous screen
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
         Navigator.pop(context);
@@ -212,10 +308,14 @@ class _EnrollScreenState extends State<EnrollScreen>
       debugPrint('❌ EnrollScreen: Error enrolling user: $e');
       debugPrint('❌ EnrollScreen: Stack trace: $stackTrace');
 
+      setState(() {
+        _isEnrolling = false;
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to enroll user: $e'),
+            content: Text('Enrollment failed: $e'),
             backgroundColor: Colors.red,
           ),
         );
