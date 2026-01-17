@@ -5,6 +5,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image/image.dart' as img;
 import 'user_management_screen.dart';
 import 'services/face_recognition_service.dart';
+import 'services/lock_api_service.dart';
+import 'screens/api_config_panel.dart';
 
 enum CameraMode { verify, enroll }
 
@@ -29,6 +31,9 @@ class _CameraScreenState extends State<CameraScreen>
   final FaceRecognitionService _faceRecognition = FaceRecognitionService();
   bool _modelLoaded = false;
 
+  // Lock API service
+  final LockApiService _lockApi = LockApiService();
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +41,7 @@ class _CameraScreenState extends State<CameraScreen>
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
     _initializeFaceRecognition();
+    _lockApi.initialize();
   }
 
   Future<void> _initializeFaceRecognition() async {
@@ -235,21 +241,31 @@ class _CameraScreenState extends State<CameraScreen>
         debugPrint(
           '✅ CameraScreen: Identified as: $personName (distance: ${distance.toStringAsFixed(4)})',
         );
-        debugPrint(
-          '🔓 CameraScreen: Sending unlock command to Godrej Advantis IoT9...',
-        );
-        debugPrint('✅ CameraScreen: Lock unlocked successfully!');
+
+        // Actually unlock the door via API
+        final (unlockSuccess, unlockMessage) = await _lockApi.unlockDoor();
+
+        if (unlockSuccess) {
+          debugPrint('✅ CameraScreen: Lock unlocked via API!');
+        } else {
+          debugPrint('⚠️ CameraScreen: Lock unlock failed: $unlockMessage');
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
+                  Icon(
+                    unlockSuccess ? Icons.lock_open : Icons.check_circle,
+                    color: Colors.white,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Welcome $personName! Unlocking Godrej Lock... Distance: ${distance.toStringAsFixed(4)}',
+                      unlockSuccess
+                          ? 'Welcome $personName! Door unlocked!'
+                          : 'Welcome $personName! (API: $unlockMessage)',
                     ),
                   ),
                 ],
@@ -552,47 +568,60 @@ class _CameraScreenState extends State<CameraScreen>
                     // Left spacer for balance
                     const SizedBox(width: 8),
 
-                    // Center branding
+                    // Center branding - double tap for hidden API config
                     Expanded(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
+                      child: GestureDetector(
+                        onDoubleTap: () {
+                          debugPrint(
+                            '🔧 CameraScreen: Double-tap detected - opening API config',
+                          );
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ApiConfigPanel(),
                             ),
-                            child: const Icon(
-                              Icons.security,
-                              color: Colors.blue,
-                              size: 24,
+                          );
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.security,
+                                color: Colors.blue,
+                                size: 24,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Godrej Advantis IoT9',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.3,
+                            const SizedBox(width: 12),
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Godrej Advantis IoT9',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.3,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                'Smart Digital Lock',
-                                style: TextStyle(
-                                  color: Colors.blue,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                                Text(
+                                  'Smart Digital Lock',
+                                  style: TextStyle(
+                                    color: Colors.blue,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
 
