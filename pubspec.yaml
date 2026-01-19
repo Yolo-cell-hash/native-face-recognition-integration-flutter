@@ -57,6 +57,12 @@ dependencies:
   
   # Image processing for CLAHE/MSRCR
   image: ^4.1.7
+  
+  # Home screen widget support
+  home_widget: ^0.6.0
+  
+  # Deep linking for widget clicks
+  app_links: ^6.3.3
 
 dev_dependencies:
   flutter_test:

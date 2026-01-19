@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HMUAT</string>
+    <string name="widget_description">Quick access to face verification</string>
+    <string name="widget_title">Face Recognition</string>
+    <string name="widget_default_status">Tap to verify</string>
+</resources>

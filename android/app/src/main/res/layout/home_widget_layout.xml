@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:padding="16dp">
+
+    <!-- App icon and title -->
+    <ImageView
+        android:id="@+id/widget_icon"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:src="@mipmap/ic_launcher"
+        android:contentDescription="App Icon" />
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_toEndOf="@id/widget_icon"
+        android:layout_alignTop="@id/widget_icon"
+        android:layout_marginStart="12dp"
+        android:text="Face Recognition"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <!-- Status text -->
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_toEndOf="@id/widget_icon"
+        android:layout_below="@id/widget_title"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="4dp"
+        android:text="Tap to verify"
+        android:textColor="#B0BEC5"
+        android:textSize="14sp" />
+
+    <!-- Last verification time -->
+    <TextView
+        android:id="@+id/widget_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/widget_icon"
+        android:layout_alignParentStart="true"
+        android:layout_marginTop="12dp"
+        android:text="Never"
+        android:textColor="#78909C"
+        android:textSize="12sp" />
+
+    <!-- Clickable area overlay (entire widget is clickable) -->
+    <View
+        android:id="@+id/widget_click_area"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="?android:attr/selectableItemBackground" />
+
+</RelativeLayout>

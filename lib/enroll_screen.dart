@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import 'models/user_model.dart';
 import 'services/user_storage_service.dart';
 import 'services/face_recognition_service.dart';
+import 'services/anti_spoofing_service.dart';
 
 class EnrollScreen extends StatefulWidget {
   const EnrollScreen({super.key});
@@ -31,6 +32,11 @@ class _EnrollScreenState extends State<EnrollScreen>
   final FaceRecognitionService _faceRecognition = FaceRecognitionService();
   bool _modelLoaded = false;
 
+  // Anti-spoofing service
+  final AntiSpoofingService _antiSpoof = AntiSpoofingService();
+  bool _antiSpoofLoaded = false;
+  String _enrollmentStatus = '';
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +44,7 @@ class _EnrollScreenState extends State<EnrollScreen>
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
     _initializeFaceRecognition();
+    _initializeAntiSpoof();
   }
 
   Future<void> _initializeFaceRecognition() async {
@@ -55,6 +62,19 @@ class _EnrollScreenState extends State<EnrollScreen>
     }
   }
 
+  Future<void> _initializeAntiSpoof() async {
+    debugPrint('🛡️ EnrollScreen: Initializing anti-spoofing service...');
+    final success = await _antiSpoof.initialize();
+    setState(() {
+      _antiSpoofLoaded = success;
+    });
+    if (success) {
+      debugPrint('✅ EnrollScreen: Anti-spoofing service ready');
+    } else {
+      debugPrint('⚠️ EnrollScreen: Anti-spoofing service failed to initialize');
+    }
+  }
+
   @override
   void dispose() {
     debugPrint('📝 EnrollScreen: dispose called');
@@ -62,6 +82,7 @@ class _EnrollScreenState extends State<EnrollScreen>
     _controller?.dispose();
     _nameController.dispose();
     _faceRecognition.dispose();
+    _antiSpoof.dispose();
     super.dispose();
   }
 
@@ -200,6 +221,7 @@ class _EnrollScreenState extends State<EnrollScreen>
 
     setState(() {
       _isEnrolling = true;
+      _enrollmentStatus = 'Loading image...';
     });
 
     try {
@@ -215,6 +237,69 @@ class _EnrollScreenState extends State<EnrollScreen>
         throw Exception('Failed to decode image');
       }
 
+      // ========== SPOOF DETECTION ==========
+      debugPrint(
+        '🛡️ EnrollScreen: ========== SPOOF DETECTION START ==========',
+      );
+      setState(() {
+        _enrollmentStatus = 'Checking liveness...';
+      });
+
+      if (!_antiSpoofLoaded) {
+        debugPrint('⚠️ EnrollScreen: Anti-spoofing not loaded, skipping check');
+      } else {
+        debugPrint('🛡️ EnrollScreen: Running anti-spoofing check...');
+        final (isReal, pSpoof, errorMsg) = await _antiSpoof.checkLiveness(
+          decodedImage,
+        );
+
+        debugPrint(
+          '🛡️ EnrollScreen: Liveness result - isReal: $isReal, pSpoof: ${pSpoof.toStringAsFixed(4)}',
+        );
+
+        if (!isReal) {
+          debugPrint('❌ EnrollScreen: SPOOF DETECTED! Rejecting enrollment.');
+          debugPrint(
+            '🛡️ EnrollScreen: p_spoof = ${pSpoof.toStringAsFixed(4)}',
+          );
+
+          setState(() {
+            _isEnrolling = false;
+            _enrollmentStatus = '';
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.warning_amber, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Spoof Detected! Cannot enroll with a photo. Score: ${pSpoof.toStringAsFixed(3)}${errorMsg != null ? ' ($errorMsg)' : ''}',
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.deepOrange,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+        debugPrint(
+          '✅ EnrollScreen: Liveness check PASSED - proceeding to enrollment',
+        );
+      }
+      debugPrint('🛡️ EnrollScreen: ========== SPOOF DETECTION END ==========');
+
+      // ========== FACE REGISTRATION CHECK ==========
+      setState(() {
+        _enrollmentStatus = 'Checking if registered...';
+      });
+
       // Check if user is already registered with this face
       debugPrint('🧠 EnrollScreen: Checking if face is already registered...');
       final (isRegistered, existingName) = await _faceRecognition
@@ -226,6 +311,7 @@ class _EnrollScreenState extends State<EnrollScreen>
         );
         setState(() {
           _isEnrolling = false;
+          _enrollmentStatus = '';
         });
 
         if (mounted) {
@@ -251,6 +337,9 @@ class _EnrollScreenState extends State<EnrollScreen>
       }
 
       // Enroll user with face recognition (computes and saves embedding)
+      setState(() {
+        _enrollmentStatus = 'Computing face embedding...';
+      });
       debugPrint('🧠 EnrollScreen: Computing face embedding...');
       final success = await _faceRecognition.enrollUser(name, decodedImage);
 
@@ -281,6 +370,7 @@ class _EnrollScreenState extends State<EnrollScreen>
 
       setState(() {
         _isEnrolling = false;
+        _enrollmentStatus = '';
       });
 
       if (!mounted) return;
@@ -310,6 +400,7 @@ class _EnrollScreenState extends State<EnrollScreen>
 
       setState(() {
         _isEnrolling = false;
+        _enrollmentStatus = '';
       });
 
       if (mounted) {
@@ -372,9 +463,11 @@ class _EnrollScreenState extends State<EnrollScreen>
                         ),
                       ),
                       const SizedBox(height: 24),
-                      const Text(
-                        'Processing Face...',
-                        style: TextStyle(
+                      Text(
+                        _enrollmentStatus.isNotEmpty
+                            ? _enrollmentStatus
+                            : 'Processing Face...',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -382,7 +475,9 @@ class _EnrollScreenState extends State<EnrollScreen>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Detecting face and computing embedding',
+                        _enrollmentStatus.contains('liveness')
+                            ? 'Checking if face is real...'
+                            : 'Detecting face and computing embedding',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.7),
                           fontSize: 14,

@@ -5,7 +5,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image/image.dart' as img;
 import 'user_management_screen.dart';
 import 'services/face_recognition_service.dart';
+import 'services/anti_spoofing_service.dart';
 import 'services/lock_api_service.dart';
+import 'services/widget_service.dart';
 import 'screens/api_config_panel.dart';
 
 enum CameraMode { verify, enroll }
@@ -31,6 +33,11 @@ class _CameraScreenState extends State<CameraScreen>
   final FaceRecognitionService _faceRecognition = FaceRecognitionService();
   bool _modelLoaded = false;
 
+  // Anti-spoofing service
+  final AntiSpoofingService _antiSpoof = AntiSpoofingService();
+  bool _antiSpoofLoaded = false;
+  String _verificationStatus = '';
+
   // Lock API service
   final LockApiService _lockApi = LockApiService();
 
@@ -41,6 +48,7 @@ class _CameraScreenState extends State<CameraScreen>
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
     _initializeFaceRecognition();
+    _initializeAntiSpoof();
     _lockApi.initialize();
   }
 
@@ -59,12 +67,26 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  Future<void> _initializeAntiSpoof() async {
+    debugPrint('🛡️ CameraScreen: Initializing anti-spoofing service...');
+    final success = await _antiSpoof.initialize();
+    setState(() {
+      _antiSpoofLoaded = success;
+    });
+    if (success) {
+      debugPrint('✅ CameraScreen: Anti-spoofing service ready');
+    } else {
+      debugPrint('⚠️ CameraScreen: Anti-spoofing service failed to initialize');
+    }
+  }
+
   @override
   void dispose() {
     debugPrint('🎬 CameraScreen: dispose called');
     WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
     _faceRecognition.dispose();
+    _antiSpoof.dispose();
     super.dispose();
   }
 
@@ -206,6 +228,7 @@ class _CameraScreenState extends State<CameraScreen>
 
     setState(() {
       _isVerifying = true;
+      _verificationStatus = 'Capturing...';
     });
 
     try {
@@ -232,6 +255,74 @@ class _CameraScreenState extends State<CameraScreen>
         throw Exception('Failed to decode captured image');
       }
 
+      // ========== SPOOF DETECTION ==========
+      debugPrint(
+        '🛡️ CameraScreen: ========== SPOOF DETECTION START ==========',
+      );
+      setState(() {
+        _verificationStatus = 'Checking liveness...';
+      });
+
+      if (!_antiSpoofLoaded) {
+        debugPrint('⚠️ CameraScreen: Anti-spoofing not loaded, skipping check');
+      } else {
+        debugPrint('🛡️ CameraScreen: Running anti-spoofing check...');
+        final (isReal, pSpoof, errorMsg) = await _antiSpoof.checkLiveness(
+          decodedImage,
+        );
+
+        debugPrint(
+          '🛡️ CameraScreen: Liveness result - isReal: $isReal, pSpoof: ${pSpoof.toStringAsFixed(4)}',
+        );
+
+        if (!isReal) {
+          debugPrint('❌ CameraScreen: SPOOF DETECTED! Rejecting verification.');
+          debugPrint(
+            '🛡️ CameraScreen: p_spoof = ${pSpoof.toStringAsFixed(4)}',
+          );
+
+          // Clean up temp file
+          if (await file.exists()) {
+            await file.delete();
+          }
+
+          setState(() {
+            _isVerifying = false;
+            _verificationStatus = '';
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.warning_amber, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Spoof Detected! Score: ${pSpoof.toStringAsFixed(3)}${errorMsg != null ? ' ($errorMsg)' : ''}',
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.deepOrange,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+        debugPrint(
+          '✅ CameraScreen: Liveness check PASSED - proceeding to recognition',
+        );
+      }
+      debugPrint('🛡️ CameraScreen: ========== SPOOF DETECTION END ==========');
+
+      // ========== FACE RECOGNITION ==========
+      setState(() {
+        _verificationStatus = 'Recognizing face...';
+      });
+
       debugPrint('🧠 CameraScreen: Running face recognition model...');
       final (isVerified, personName, distance) = await _faceRecognition
           .verifyFace(decodedImage);
@@ -250,6 +341,13 @@ class _CameraScreenState extends State<CameraScreen>
         } else {
           debugPrint('⚠️ CameraScreen: Lock unlock failed: $unlockMessage');
         }
+
+        // Update home widget with successful verification
+        debugPrint(
+          '🔷 CameraScreen: Updating home widget with successful verification',
+        );
+        await WidgetService.updateVerificationSuccess(personName);
+        debugPrint('✅ CameraScreen: Widget update completed');
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -281,6 +379,13 @@ class _CameraScreenState extends State<CameraScreen>
           '🔒 CameraScreen: Access denied - face not recognized (distance: ${distance.toStringAsFixed(4)})',
         );
 
+        // Update home widget with failed verification
+        debugPrint(
+          '🔷 CameraScreen: Updating home widget with failed verification',
+        );
+        await WidgetService.updateVerificationFailed();
+        debugPrint('✅ CameraScreen: Widget update completed');
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -305,6 +410,7 @@ class _CameraScreenState extends State<CameraScreen>
 
       setState(() {
         _isVerifying = false;
+        _verificationStatus = '';
       });
     } catch (e, stackTrace) {
       debugPrint('❌ CameraScreen: Error during verification: $e');
@@ -321,6 +427,7 @@ class _CameraScreenState extends State<CameraScreen>
 
       setState(() {
         _isVerifying = false;
+        _verificationStatus = '';
       });
     }
   }
@@ -740,10 +847,10 @@ class _CameraScreenState extends State<CameraScreen>
                       ],
                     ),
                     child: _isVerifying
-                        ? const Row(
+                        ? Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              SizedBox(
+                              const SizedBox(
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
@@ -751,10 +858,12 @@ class _CameraScreenState extends State<CameraScreen>
                                   strokeWidth: 2,
                                 ),
                               ),
-                              SizedBox(width: 16),
+                              const SizedBox(width: 16),
                               Text(
-                                'Verifying Face...',
-                                style: TextStyle(
+                                _verificationStatus.isNotEmpty
+                                    ? _verificationStatus
+                                    : 'Verifying...',
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
