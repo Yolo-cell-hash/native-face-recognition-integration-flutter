@@ -170,6 +170,21 @@ class _EnrollScreenState extends State<EnrollScreen>
       final image = await _controller!.takePicture();
       debugPrint('✅ EnrollScreen: Photo captured - ${image.path}');
 
+      // Flip the image horizontally to correct front camera mirror effect
+      debugPrint('📝 EnrollScreen: Flipping image to natural orientation...');
+      final file = File(image.path);
+      final bytes = await file.readAsBytes();
+      final decodedImage = img.decodeImage(bytes);
+
+      if (decodedImage != null) {
+        // Flip horizontally to get natural (non-mirrored) image
+        final flippedImage = img.flipHorizontal(decodedImage);
+
+        // Save the flipped image back
+        await file.writeAsBytes(img.encodeJpg(flippedImage, quality: 95));
+        debugPrint('✅ EnrollScreen: Image flipped and saved');
+      }
+
       setState(() {
         _capturedImage = image;
         _isCapturing = false;
@@ -270,20 +285,16 @@ class _EnrollScreenState extends State<EnrollScreen>
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
+              const SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.warning_amber, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Spoof Detected! Cannot enroll with a photo. Score: ${pSpoof.toStringAsFixed(3)}${errorMsg != null ? ' ($errorMsg)' : ''}',
-                      ),
-                    ),
+                    Icon(Icons.block, color: Colors.white),
+                    SizedBox(width: 12),
+                    Text('Enrollment failed - Please use a real face'),
                   ],
                 ),
-                backgroundColor: Colors.deepOrange,
-                duration: const Duration(seconds: 4),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
               ),
             );
           }

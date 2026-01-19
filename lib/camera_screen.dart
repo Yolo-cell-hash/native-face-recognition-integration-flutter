@@ -38,6 +38,12 @@ class _CameraScreenState extends State<CameraScreen>
   bool _antiSpoofLoaded = false;
   String _verificationStatus = '';
 
+  // Auto-verification state
+  bool _hasAttemptedAutoVerification = false;
+  bool _showRetryButton = false;
+  int _autoVerificationCountdown =
+      3; // 🔴 INITIAL VERIFICATION DURATION: 3 seconds
+
   // Lock API service
   final LockApiService _lockApi = LockApiService();
 
@@ -113,6 +119,17 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _initializeCamera() async {
     debugPrint('📷 CameraScreen: Starting camera initialization...');
+
+    // Dispose existing controller first to prevent IllegalArgumentException
+    if (_controller != null) {
+      debugPrint('📷 CameraScreen: Disposing existing camera controller...');
+      try {
+        await _controller!.dispose();
+      } catch (e) {
+        debugPrint('⚠️ CameraScreen: Error disposing old controller: $e');
+      }
+      _controller = null;
+    }
 
     try {
       debugPrint('📷 CameraScreen: Checking camera permission...');
@@ -194,12 +211,37 @@ class _CameraScreenState extends State<CameraScreen>
         _errorMessage = null;
       });
       debugPrint('✅ CameraScreen: Camera ready for facial recognition');
+
+      // 🔴 AUTO-VERIFICATION: Start countdown after camera is ready
+      debugPrint(
+        '🔴 CameraScreen: Starting auto-verification countdown (${_autoVerificationCountdown} seconds)...',
+      );
+      _startAutoVerification();
     } catch (e, stackTrace) {
       debugPrint('❌ CameraScreen: Error initializing camera: $e');
       debugPrint('❌ CameraScreen: Stack trace: $stackTrace');
-      setState(() {
-        _errorMessage = 'Failed to initialize camera: $e';
-      });
+
+      // Try to recover from camera error by disposing and retrying once
+      if (e.toString().contains('Illegal') ||
+          e.toString().contains('CameraException')) {
+        debugPrint('📷 CameraScreen: Attempting camera recovery...');
+        try {
+          _controller?.dispose();
+          _controller = null;
+          await Future.delayed(const Duration(milliseconds: 500));
+          // Don't retry here to avoid infinite loop - just clear state
+          debugPrint(
+            '📷 CameraScreen: Camera cleaned up, tap retry to reinitialize',
+          );
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        setState(() {
+          _isInitialized = false;
+          _errorMessage = 'Camera initialization failed. Please tap Retry.';
+        });
+      }
     }
   }
 
@@ -293,20 +335,16 @@ class _CameraScreenState extends State<CameraScreen>
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
+              const SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.warning_amber, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Spoof Detected! Score: ${pSpoof.toStringAsFixed(3)}${errorMsg != null ? ' ($errorMsg)' : ''}',
-                      ),
-                    ),
+                    Icon(Icons.block, color: Colors.white),
+                    SizedBox(width: 12),
+                    Text('Access Denied'),
                   ],
                 ),
-                backgroundColor: Colors.deepOrange,
-                duration: const Duration(seconds: 4),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
               ),
             );
           }
@@ -354,18 +392,9 @@ class _CameraScreenState extends State<CameraScreen>
             SnackBar(
               content: Row(
                 children: [
-                  Icon(
-                    unlockSuccess ? Icons.lock_open : Icons.check_circle,
-                    color: Colors.white,
-                  ),
+                  const Icon(Icons.check_circle, color: Colors.white),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      unlockSuccess
-                          ? 'Welcome $personName! Door unlocked!'
-                          : 'Welcome $personName! (API: $unlockMessage)',
-                    ),
-                  ),
+                  Text('Access Granted - Welcome $personName'),
                 ],
               ),
               backgroundColor: Colors.green,
@@ -388,16 +417,16 @@ class _CameraScreenState extends State<CameraScreen>
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.error, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Text('Face Not Recognized (${distance.toStringAsFixed(2)})'),
+                  Icon(Icons.block, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text('Access Denied'),
                 ],
               ),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
+              duration: Duration(seconds: 3),
             ),
           );
         }
@@ -418,8 +447,8 @@ class _CameraScreenState extends State<CameraScreen>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Verification error: $e'),
+          const SnackBar(
+            content: Text('Access Denied'),
             backgroundColor: Colors.red,
           ),
         );
@@ -429,6 +458,78 @@ class _CameraScreenState extends State<CameraScreen>
         _isVerifying = false;
         _verificationStatus = '';
       });
+    }
+  }
+
+  /// 🔴 AUTO-VERIFICATION: Start countdown and trigger verification automatically
+  /// This runs 3 seconds after camera initialization
+  Future<void> _startAutoVerification() async {
+    debugPrint('🔴 CameraScreen: _startAutoVerification() called');
+
+    if (_hasAttemptedAutoVerification) {
+      debugPrint(
+        '⚠️ CameraScreen: Auto-verification already attempted, skipping',
+      );
+      return;
+    }
+
+    // 🔴 COUNTDOWN LOOP: 3 seconds (Duration set at line 44)
+    for (int i = _autoVerificationCountdown; i > 0; i--) {
+      if (!mounted) {
+        debugPrint(
+          '⚠️ CameraScreen: Widget unmounted during countdown, aborting auto-verification',
+        );
+        return;
+      }
+
+      debugPrint('🔴 CameraScreen: Auto-verification countdown: $i seconds...');
+      setState(() {
+        _verificationStatus = 'Auto-verifying in $i...';
+      });
+
+      // 🔴 WAIT 1 SECOND (each iteration of countdown)
+      await Future.delayed(const Duration(seconds: 1));
+    }
+
+    if (!mounted) {
+      debugPrint(
+        '⚠️ CameraScreen: Widget unmounted after countdown, aborting auto-verification',
+      );
+      return;
+    }
+
+    // Mark that we've attempted auto-verification
+    setState(() {
+      _hasAttemptedAutoVerification = true;
+    });
+
+    debugPrint(
+      '🔴 CameraScreen: Countdown complete, starting automatic verification...',
+    );
+
+    // Check if services are ready
+    if (!_faceRecognition.isInitialized) {
+      debugPrint(
+        '⚠️ CameraScreen: Face recognition not ready for auto-verification',
+      );
+      setState(() {
+        _showRetryButton = true;
+        _verificationStatus = '';
+      });
+      return;
+    }
+
+    // 🔴 TRIGGER AUTOMATIC VERIFICATION
+    debugPrint('🔴 CameraScreen: Triggering automatic face verification...');
+    await _verifyFace();
+
+    // If verification failed, show retry button
+    debugPrint('🔴 CameraScreen: Auto-verification completed');
+    if (mounted && !_isVerifying) {
+      setState(() {
+        _showRetryButton = true;
+      });
+      debugPrint('🔴 CameraScreen: Retry button is now visible');
     }
   }
 
@@ -823,75 +924,76 @@ class _CameraScreenState extends State<CameraScreen>
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
                 const SizedBox(height: 20),
-                // Verify button
-                GestureDetector(
-                  onTap: _isVerifying ? null : _verifyFace,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: _isVerifying
-                            ? [Colors.grey, Colors.grey.shade700]
-                            : [Colors.blue, Colors.blue.shade700],
-                      ),
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _isVerifying
-                              ? Colors.grey.withOpacity(0.3)
-                              : Colors.blue.withOpacity(0.4),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
+                // Verify button - only show after auto-verification fails
+                if (_showRetryButton || _isVerifying)
+                  GestureDetector(
+                    onTap: _isVerifying ? null : _verifyFace,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: _isVerifying
+                              ? [Colors.grey, Colors.grey.shade700]
+                              : [Colors.blue, Colors.blue.shade700],
                         ),
-                      ],
-                    ),
-                    child: _isVerifying
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Text(
-                                _verificationStatus.isNotEmpty
-                                    ? _verificationStatus
-                                    : 'Verifying...',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.lock_open,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                              SizedBox(width: 12),
-                              Text(
-                                'Verify Face to Unlock',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _isVerifying
+                                ? Colors.grey.withOpacity(0.3)
+                                : Colors.blue.withOpacity(0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
+                        ],
+                      ),
+                      child: _isVerifying
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Text(
+                                  _verificationStatus.isNotEmpty
+                                      ? _verificationStatus
+                                      : 'Verifying...',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.refresh,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Re-verify',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
