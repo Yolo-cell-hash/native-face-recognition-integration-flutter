@@ -154,6 +154,10 @@ class _EnrollScreenState extends State<EnrollScreen>
     }
   }
 
+  /// 🔴 CAPTURE WITH LIVENESS: Runs 3-second liveness check before capturing
+  /// Only captures photo after liveness passes - prevents spoof enrollment
+  static const int _livenessTimeoutSeconds = 3;
+
   Future<void> _capturePhoto() async {
     if (_controller == null ||
         !_controller!.value.isInitialized ||
@@ -163,37 +167,140 @@ class _EnrollScreenState extends State<EnrollScreen>
 
     setState(() {
       _isCapturing = true;
+      _enrollmentStatus = 'Checking liveness...';
     });
 
+    debugPrint(
+      '🔴 EnrollScreen: Starting liveness check (${_livenessTimeoutSeconds}s timeout) before capture...',
+    );
+
+    final stopwatch = Stopwatch()..start();
+    int frameCount = 0;
+    bool livenessConfirmed = false;
+    img.Image? confirmedImage;
+    File? confirmedFile;
+
     try {
-      debugPrint('📝 EnrollScreen: Capturing enrollment photo...');
-      final image = await _controller!.takePicture();
-      debugPrint('✅ EnrollScreen: Photo captured - ${image.path}');
+      // 🔴 LIVENESS CHECK LOOP: Keep trying for 3 seconds
+      while (stopwatch.elapsed.inSeconds < _livenessTimeoutSeconds &&
+          !livenessConfirmed) {
+        if (!mounted) {
+          debugPrint('⚠️ EnrollScreen: Widget unmounted during liveness check');
+          break;
+        }
 
-      // Flip the image horizontally to correct front camera mirror effect
-      debugPrint('📝 EnrollScreen: Flipping image to natural orientation...');
-      final file = File(image.path);
-      final bytes = await file.readAsBytes();
-      final decodedImage = img.decodeImage(bytes);
+        frameCount++;
+        final remainingTime =
+            _livenessTimeoutSeconds - stopwatch.elapsed.inSeconds;
+        debugPrint(
+          '🔴 EnrollScreen: Frame $frameCount (${remainingTime}s remaining)',
+        );
 
-      if (decodedImage != null) {
-        // Flip horizontally to get natural (non-mirrored) image
-        final flippedImage = img.flipHorizontal(decodedImage);
+        setState(() {
+          _enrollmentStatus = 'Checking liveness... (${remainingTime}s)';
+        });
 
-        // Save the flipped image back
-        await file.writeAsBytes(img.encodeJpg(flippedImage, quality: 95));
-        debugPrint('✅ EnrollScreen: Image flipped and saved');
+        // Capture frame for liveness check
+        final xFile = await _controller!.takePicture();
+        final file = File(xFile.path);
+        final bytes = await file.readAsBytes();
+        final decodedImage = img.decodeImage(bytes);
+
+        if (decodedImage == null) {
+          debugPrint('⚠️ EnrollScreen: Frame $frameCount - failed to decode');
+          await file.delete();
+          continue;
+        }
+
+        // 🛡️ LIVENESS CHECK
+        if (_antiSpoofLoaded) {
+          final (isReal, pSpoof, _) = await _antiSpoof.checkLiveness(
+            decodedImage,
+          );
+          debugPrint(
+            '🛡️ EnrollScreen: Frame $frameCount - isReal: $isReal, pSpoof: ${pSpoof.toStringAsFixed(4)}',
+          );
+
+          if (isReal) {
+            debugPrint(
+              '✅ EnrollScreen: Liveness CONFIRMED on frame $frameCount',
+            );
+            livenessConfirmed = true;
+            confirmedImage = decodedImage;
+            confirmedFile = file;
+            break;
+          } else {
+            debugPrint('❌ EnrollScreen: Frame $frameCount - spoof detected');
+            await file.delete();
+          }
+        } else {
+          // No anti-spoof loaded, accept the frame
+          debugPrint('⚠️ EnrollScreen: Anti-spoof not loaded, accepting frame');
+          livenessConfirmed = true;
+          confirmedImage = decodedImage;
+          confirmedFile = file;
+          break;
+        }
+
+        await Future.delayed(const Duration(milliseconds: 150));
       }
 
-      setState(() {
-        _capturedImage = image;
-        _isCapturing = false;
-      });
+      stopwatch.stop();
+      debugPrint(
+        '🔴 EnrollScreen: Liveness check complete - $frameCount frames in ${stopwatch.elapsed.inMilliseconds}ms',
+      );
+
+      if (livenessConfirmed &&
+          confirmedImage != null &&
+          confirmedFile != null) {
+        // Flip the image horizontally to correct front camera mirror effect
+        debugPrint('📝 EnrollScreen: Flipping image to natural orientation...');
+        final flippedImage = img.flipHorizontal(confirmedImage);
+        await confirmedFile.writeAsBytes(
+          img.encodeJpg(flippedImage, quality: 95),
+        );
+        debugPrint('✅ EnrollScreen: Image flipped and saved');
+
+        setState(() {
+          _capturedImage = XFile(confirmedFile!.path);
+          _isCapturing = false;
+          _enrollmentStatus = '';
+        });
+
+        debugPrint('✅ EnrollScreen: Photo captured with confirmed liveness');
+      } else {
+        // Liveness check failed
+        debugPrint(
+          '❌ EnrollScreen: Liveness check FAILED - no real face detected',
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.block, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text('Please use a real face - spoofs not allowed'),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+
+        setState(() {
+          _isCapturing = false;
+          _enrollmentStatus = '';
+        });
+      }
     } catch (e, stackTrace) {
-      debugPrint('❌ EnrollScreen: Error capturing photo: $e');
+      debugPrint('❌ EnrollScreen: Error during liveness-capture: $e');
       debugPrint('❌ EnrollScreen: Stack trace: $stackTrace');
       setState(() {
         _isCapturing = false;
+        _enrollmentStatus = '';
       });
     }
   }

@@ -41,8 +41,13 @@ class _CameraScreenState extends State<CameraScreen>
   // Auto-verification state
   bool _hasAttemptedAutoVerification = false;
   bool _showRetryButton = false;
-  int _autoVerificationCountdown =
-      3; // 🔴 INITIAL VERIFICATION DURATION: 3 seconds
+
+  // 🔴 MULTI-FRAME VERIFICATION: Timeout duration
+  static const int _verificationTimeoutSeconds = 3;
+
+  // Result tracking for message display
+  double _lastDistance = 0.0;
+  bool _lastWasSpoof = false;
 
   // Lock API service
   final LockApiService _lockApi = LockApiService();
@@ -212,9 +217,9 @@ class _CameraScreenState extends State<CameraScreen>
       });
       debugPrint('✅ CameraScreen: Camera ready for facial recognition');
 
-      // 🔴 AUTO-VERIFICATION: Start countdown after camera is ready
+      // 🔴 AUTO-VERIFICATION: Start immediately after camera is ready
       debugPrint(
-        '🔴 CameraScreen: Starting auto-verification countdown (${_autoVerificationCountdown} seconds)...',
+        '🔴 CameraScreen: Starting auto-verification (${_verificationTimeoutSeconds}s timeout)...',
       );
       _startAutoVerification();
     } catch (e, stackTrace) {
@@ -245,6 +250,8 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  /// 🔴 MULTI-FRAME VERIFICATION: Tries multiple frames for 3 seconds
+  /// No frame buffering - each frame is processed and immediately discarded
   Future<void> _verifyFace() async {
     if (_controller == null ||
         !_controller!.value.isInitialized ||
@@ -270,122 +277,106 @@ class _CameraScreenState extends State<CameraScreen>
 
     setState(() {
       _isVerifying = true;
-      _verificationStatus = 'Capturing...';
+      _verificationStatus = 'Scanning...';
+      _lastWasSpoof = false;
+      _lastDistance = 0.0;
     });
 
+    debugPrint(
+      '🔴 CameraScreen: Starting MULTI-FRAME verification (${_verificationTimeoutSeconds}s timeout)',
+    );
+
+    final stopwatch = Stopwatch()..start();
+    int frameCount = 0;
+    bool grantedAccess = false;
+    String? grantedName;
+
     try {
-      debugPrint('🔐 CameraScreen: Starting facial verification...');
-      debugPrint('🔐 CameraScreen: Capturing frame for verification...');
+      // 🔴 MULTI-FRAME LOOP: Keep trying for _verificationTimeoutSeconds
+      while (stopwatch.elapsed.inSeconds < _verificationTimeoutSeconds &&
+          !grantedAccess) {
+        if (!mounted) {
+          debugPrint('⚠️ CameraScreen: Widget unmounted during verification');
+          break;
+        }
 
-      final xFile = await _controller!.takePicture();
-      debugPrint('✅ CameraScreen: Frame captured for verification');
-      debugPrint('🔐 CameraScreen: Image path: ${xFile.path}');
-
-      final file = File(xFile.path);
-      final fileSize = await file.length();
-      debugPrint(
-        '🔐 CameraScreen: Image size: ${(fileSize / 1024).toStringAsFixed(2)} KB',
-      );
-
-      // Load and decode image for face recognition
-      debugPrint('🧠 CameraScreen: Loading image for face recognition...');
-      final bytes = await file.readAsBytes();
-      final decodedImage = img.decodeImage(bytes);
-
-      if (decodedImage == null) {
-        debugPrint('❌ CameraScreen: Failed to decode image');
-        throw Exception('Failed to decode captured image');
-      }
-
-      // ========== SPOOF DETECTION ==========
-      debugPrint(
-        '🛡️ CameraScreen: ========== SPOOF DETECTION START ==========',
-      );
-      setState(() {
-        _verificationStatus = 'Checking liveness...';
-      });
-
-      if (!_antiSpoofLoaded) {
-        debugPrint('⚠️ CameraScreen: Anti-spoofing not loaded, skipping check');
-      } else {
-        debugPrint('🛡️ CameraScreen: Running anti-spoofing check...');
-        final (isReal, pSpoof, errorMsg) = await _antiSpoof.checkLiveness(
-          decodedImage,
-        );
-
+        frameCount++;
+        final remainingTime =
+            _verificationTimeoutSeconds - stopwatch.elapsed.inSeconds;
         debugPrint(
-          '🛡️ CameraScreen: Liveness result - isReal: $isReal, pSpoof: ${pSpoof.toStringAsFixed(4)}',
+          '🔴 CameraScreen: Frame $frameCount (${stopwatch.elapsed.inMilliseconds}ms, ${remainingTime}s remaining)',
         );
 
-        if (!isReal) {
-          debugPrint('❌ CameraScreen: SPOOF DETECTED! Rejecting verification.');
+        setState(() {
+          _verificationStatus = 'Scanning... (${remainingTime}s)';
+        });
+
+        // Capture frame (NO BUFFERING - process immediately)
+        final xFile = await _controller!.takePicture();
+        final file = File(xFile.path);
+        final bytes = await file.readAsBytes();
+        final decodedImage = img.decodeImage(bytes);
+
+        if (decodedImage == null) {
+          debugPrint('⚠️ CameraScreen: Frame $frameCount - failed to decode');
+          await file.delete();
+          continue;
+        }
+
+        // 🛡️ SPOOF CHECK
+        if (_antiSpoofLoaded) {
+          final (isReal, pSpoof, _) = await _antiSpoof.checkLiveness(
+            decodedImage,
+          );
           debugPrint(
-            '🛡️ CameraScreen: p_spoof = ${pSpoof.toStringAsFixed(4)}',
+            '🛡️ CameraScreen: Frame $frameCount spoof - isReal: $isReal, pSpoof: ${pSpoof.toStringAsFixed(4)}',
           );
 
-          // Clean up temp file
-          if (await file.exists()) {
+          if (!isReal) {
+            debugPrint('❌ CameraScreen: Frame $frameCount - SPOOF DETECTED');
+            _lastWasSpoof = true;
             await file.delete();
+            await Future.delayed(const Duration(milliseconds: 150));
+            continue;
           }
-
-          setState(() {
-            _isVerifying = false;
-            _verificationStatus = '';
-          });
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Row(
-                  children: [
-                    Icon(Icons.block, color: Colors.white),
-                    SizedBox(width: 12),
-                    Text('Access Denied'),
-                  ],
-                ),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-          return;
+          _lastWasSpoof = false;
         }
+
+        // 🧠 FACE RECOGNITION
+        final (isVerified, personName, distance) = await _faceRecognition
+            .verifyFace(decodedImage);
+        _lastDistance = distance;
         debugPrint(
-          '✅ CameraScreen: Liveness check PASSED - proceeding to recognition',
+          '🧠 CameraScreen: Frame $frameCount - verified: $isVerified, name: $personName, distance: ${distance.toStringAsFixed(4)}',
         );
+
+        // Clean up temp file (NO BUFFERING)
+        await file.delete();
+
+        if (isVerified && personName != null) {
+          grantedAccess = true;
+          grantedName = personName;
+          debugPrint('✅ CameraScreen: ACCESS GRANTED on frame $frameCount');
+          break;
+        }
+
+        // Brief delay between frames
+        await Future.delayed(const Duration(milliseconds: 100));
       }
-      debugPrint('🛡️ CameraScreen: ========== SPOOF DETECTION END ==========');
 
-      // ========== FACE RECOGNITION ==========
-      setState(() {
-        _verificationStatus = 'Recognizing face...';
-      });
+      stopwatch.stop();
+      debugPrint(
+        '🔴 CameraScreen: Multi-frame complete - $frameCount frames in ${stopwatch.elapsed.inMilliseconds}ms',
+      );
 
-      debugPrint('🧠 CameraScreen: Running face recognition model...');
-      final (isVerified, personName, distance) = await _faceRecognition
-          .verifyFace(decodedImage);
-
-      if (isVerified && personName != null) {
-        debugPrint('✅ CameraScreen: Facial verification SUCCESS');
-        debugPrint(
-          '✅ CameraScreen: Identified as: $personName (distance: ${distance.toStringAsFixed(4)})',
-        );
-
-        // Actually unlock the door via API
+      // Handle result
+      if (grantedAccess && grantedName != null) {
         final (unlockSuccess, unlockMessage) = await _lockApi.unlockDoor();
-
-        if (unlockSuccess) {
-          debugPrint('✅ CameraScreen: Lock unlocked via API!');
-        } else {
-          debugPrint('⚠️ CameraScreen: Lock unlock failed: $unlockMessage');
-        }
-
-        // Update home widget with successful verification
         debugPrint(
-          '🔷 CameraScreen: Updating home widget with successful verification',
+          '🔐 CameraScreen: Door unlock: $unlockSuccess - $unlockMessage',
         );
-        await WidgetService.updateVerificationSuccess(personName);
-        debugPrint('✅ CameraScreen: Widget update completed');
+
+        await WidgetService.updateVerificationSuccess(grantedName);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -394,7 +385,9 @@ class _CameraScreenState extends State<CameraScreen>
                 children: [
                   const Icon(Icons.check_circle, color: Colors.white),
                   const SizedBox(width: 12),
-                  Text('Access Granted - Welcome $personName'),
+                  Text(
+                    'Granted $grantedName (T: ${_lastDistance.toStringAsFixed(2)})',
+                  ),
                 ],
               ),
               backgroundColor: Colors.green,
@@ -403,68 +396,54 @@ class _CameraScreenState extends State<CameraScreen>
           );
         }
       } else {
-        debugPrint('❌ CameraScreen: Facial verification FAILED');
-        debugPrint(
-          '🔒 CameraScreen: Access denied - face not recognized (distance: ${distance.toStringAsFixed(4)})',
-        );
-
-        // Update home widget with failed verification
-        debugPrint(
-          '🔷 CameraScreen: Updating home widget with failed verification',
-        );
         await WidgetService.updateVerificationFailed();
-        debugPrint('✅ CameraScreen: Widget update completed');
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Row(
                 children: [
-                  Icon(Icons.block, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text('Access Denied'),
+                  const Icon(Icons.block, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Text(
+                    _lastWasSpoof
+                        ? 'Not Granted (S)'
+                        : 'Not Granted (T: ${_lastDistance.toStringAsFixed(2)})',
+                  ),
                 ],
               ),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
+              duration: const Duration(seconds: 3),
             ),
           );
         }
       }
-
-      // Clean up temp file
-      if (await file.exists()) {
-        await file.delete();
-      }
-
-      setState(() {
-        _isVerifying = false;
-        _verificationStatus = '';
-      });
     } catch (e, stackTrace) {
-      debugPrint('❌ CameraScreen: Error during verification: $e');
+      debugPrint('❌ CameraScreen: Error during multi-frame verification: $e');
       debugPrint('❌ CameraScreen: Stack trace: $stackTrace');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Access Denied'),
+            content: Text('Not Granted'),
             backgroundColor: Colors.red,
           ),
         );
       }
-
-      setState(() {
-        _isVerifying = false;
-        _verificationStatus = '';
-      });
     }
+
+    setState(() {
+      _isVerifying = false;
+      _verificationStatus = '';
+    });
   }
 
-  /// 🔴 AUTO-VERIFICATION: Start countdown and trigger verification automatically
-  /// This runs 3 seconds after camera initialization
+  /// 🔴 AUTO-VERIFICATION: Starts IMMEDIATELY without delay
+  /// Triggers verification as soon as camera is ready
   Future<void> _startAutoVerification() async {
-    debugPrint('🔴 CameraScreen: _startAutoVerification() called');
+    debugPrint(
+      '🔴 CameraScreen: _startAutoVerification() called - IMMEDIATE START',
+    );
 
     if (_hasAttemptedAutoVerification) {
       debugPrint(
@@ -473,39 +452,10 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
 
-    // 🔴 COUNTDOWN LOOP: 3 seconds (Duration set at line 44)
-    for (int i = _autoVerificationCountdown; i > 0; i--) {
-      if (!mounted) {
-        debugPrint(
-          '⚠️ CameraScreen: Widget unmounted during countdown, aborting auto-verification',
-        );
-        return;
-      }
-
-      debugPrint('🔴 CameraScreen: Auto-verification countdown: $i seconds...');
-      setState(() {
-        _verificationStatus = 'Auto-verifying in $i...';
-      });
-
-      // 🔴 WAIT 1 SECOND (each iteration of countdown)
-      await Future.delayed(const Duration(seconds: 1));
-    }
-
-    if (!mounted) {
-      debugPrint(
-        '⚠️ CameraScreen: Widget unmounted after countdown, aborting auto-verification',
-      );
-      return;
-    }
-
-    // Mark that we've attempted auto-verification
+    // Mark as attempted immediately (no countdown delay)
     setState(() {
       _hasAttemptedAutoVerification = true;
     });
-
-    debugPrint(
-      '🔴 CameraScreen: Countdown complete, starting automatic verification...',
-    );
 
     // Check if services are ready
     if (!_faceRecognition.isInitialized) {
@@ -519,11 +469,11 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
 
-    // 🔴 TRIGGER AUTOMATIC VERIFICATION
-    debugPrint('🔴 CameraScreen: Triggering automatic face verification...');
+    // 🔴 TRIGGER IMMEDIATE VERIFICATION (no countdown delay)
+    debugPrint('🔴 CameraScreen: Triggering IMMEDIATE face verification...');
     await _verifyFace();
 
-    // If verification failed, show retry button
+    // Show retry button after verification completes
     debugPrint('🔴 CameraScreen: Auto-verification completed');
     if (mounted && !_isVerifying) {
       setState(() {
