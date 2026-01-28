@@ -388,7 +388,7 @@ class _CameraScreenState extends State<CameraScreen>
 
         if (mounted) {
           final message = _appSettings.demoMode
-              ? 'ACCESS GRANTED'
+              ? 'ACCESS GRANTED TO: $grantedName'
               : 'Granted $grantedName (T: ${_lastDistance.toStringAsFixed(2)})';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
