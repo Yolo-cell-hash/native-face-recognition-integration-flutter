@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/lock_api_service.dart';
+import '../services/app_settings_service.dart';
 
 /// Hidden API Configuration Panel for Godrej Lock
 /// Access via double-tap on "Godrej Advantis IoT9" text
@@ -12,6 +13,7 @@ class ApiConfigPanel extends StatefulWidget {
 
 class _ApiConfigPanelState extends State<ApiConfigPanel> {
   final LockApiService _lockApi = LockApiService();
+  final AppSettingsService _appSettings = AppSettingsService();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
 
@@ -372,6 +374,156 @@ class _ApiConfigPanelState extends State<ApiConfigPanel> {
                 ],
               ),
             ],
+
+            const SizedBox(height: 32),
+
+            // ========== DEVELOPER SETTINGS ==========
+            const Divider(color: Colors.white24),
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Icon(
+                  Icons.developer_mode,
+                  color: Colors.purple.withOpacity(0.8),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Developer Settings',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Anti-Spoof Threshold Slider
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.purple.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.shield, color: Colors.purple, size: 18),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Anti-Spoof Threshold',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _appSettings.spoofThreshold.toStringAsFixed(3),
+                        style: const TextStyle(
+                          color: Colors.purple,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Slider(
+                    value: _appSettings.spoofThreshold,
+                    min: 0.001,
+                    max: 0.500,
+                    divisions: 499,
+                    activeColor: Colors.purple,
+                    inactiveColor: Colors.white24,
+                    label: _appSettings.spoofThreshold.toStringAsFixed(3),
+                    onChanged: (value) {
+                      setState(() {
+                        _appSettings.spoofThreshold = value;
+                      });
+                    },
+                  ),
+                  Text(
+                    'Lower = Stricter (rejects more spoofs)',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Demo Mode Toggle
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _appSettings.demoMode
+                    ? Colors.green.withOpacity(0.1)
+                    : Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _appSettings.demoMode
+                      ? Colors.green.withOpacity(0.3)
+                      : Colors.grey.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _appSettings.demoMode
+                        ? Icons.visibility_off
+                        : Icons.visibility,
+                    color: _appSettings.demoMode ? Colors.green : Colors.grey,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Demo Mode',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _appSettings.demoMode
+                              ? 'Only shows "ACCESS GRANTED/DENIED"'
+                              : 'Shows detailed scores and thresholds',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _appSettings.demoMode,
+                    activeColor: Colors.green,
+                    onChanged: (value) {
+                      setState(() {
+                        _appSettings.demoMode = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
 
             const SizedBox(height: 32),
 

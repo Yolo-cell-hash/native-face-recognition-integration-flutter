@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
+import 'app_settings_service.dart';
 
 /// Anti-spoofing service using MiniFASNetV2 TFLite model.
 /// Detects if a face is real or a spoof (photo/screen attack).
@@ -18,10 +19,12 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 /// 6. Apply softmax to get probabilities
 /// 7. Classify using threshold 0.088
 class AntiSpoofingService {
-  static const String _modelPath = 'assets/models/minifasnetv2_int8.tflite';
+  static const String _modelPath = 'assets/models/minifasnetv2_v8_int8.tflite';
   static const int _inputSize = 80;
   static const double _cropScale = 2.7;
-  static const double _spoofThreshold = 0.088;
+
+  // Use shared settings for threshold
+  final AppSettingsService _appSettings = AppSettingsService();
 
   Interpreter? _interpreter;
   late FaceDetector _faceDetector;
@@ -92,7 +95,7 @@ class AntiSpoofingService {
 
       _isInitialized = true;
       debugPrint('✅ AntiSpoof: Service initialized successfully');
-      debugPrint('🛡️ AntiSpoof: Using threshold: $_spoofThreshold');
+      debugPrint('🛡️ AntiSpoof: Using threshold: $spoofThreshold');
       return true;
     } catch (e, stackTrace) {
       debugPrint('❌ AntiSpoof: Error initializing: $e');
@@ -390,14 +393,15 @@ class AntiSpoofingService {
 
       // Step 5: Apply threshold
       debugPrint(
-        '🛡️ AntiSpoof: Step 5 - Applying threshold $_spoofThreshold...',
+        '🛡️ AntiSpoof: Step 5 - Applying threshold $spoofThreshold...',
       );
-      final isSpoof = pSpoof >= _spoofThreshold;
+      final isSpoof = pSpoof >= spoofThreshold;
       final isReal = !isSpoof;
 
       debugPrint('🛡️ AntiSpoof: ========== LIVENESS CHECK RESULT ==========');
-      debugPrint('🛡️ AntiSpoof: p_spoof: ${pSpoof.toStringAsFixed(4)}');
-      debugPrint('🛡️ AntiSpoof: threshold: $_spoofThreshold');
+      debugPrint('🛡️ AntiSpoof: 📊 SPOOF SCORE: ${pSpoof.toStringAsFixed(4)}');
+      debugPrint('🛡️ AntiSpoof: 🎯 THRESHOLD: $spoofThreshold');
+      debugPrint('🛡️ AntiSpoof: 📈 REAL SCORE: ${pReal.toStringAsFixed(4)}');
       debugPrint(
         '🛡️ AntiSpoof: Result: ${isReal ? "✅ REAL FACE" : "❌ SPOOF DETECTED"}',
       );
@@ -414,4 +418,7 @@ class AntiSpoofingService {
   }
 
   bool get isInitialized => _isInitialized;
+
+  // Getter for threshold (uses shared AppSettingsService)
+  double get spoofThreshold => _appSettings.spoofThreshold;
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
 import 'camera_screen.dart';
 import 'services/widget_service.dart';
+import 'services/app_settings_service.dart';
 
 void main() async {
   debugPrint('🚀 App: Starting Godrej Advantis IoT9 application...');
@@ -9,6 +10,10 @@ void main() async {
   // Ensure Flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('🚀 App: Flutter binding initialized');
+
+  // Initialize app settings (threshold, demo mode)
+  await AppSettingsService().initialize();
+  debugPrint('🚀 App: App settings initialized');
 
   // Initialize widget service
   await WidgetService.initialize();

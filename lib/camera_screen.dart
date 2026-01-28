@@ -8,6 +8,7 @@ import 'services/face_recognition_service.dart';
 import 'services/anti_spoofing_service.dart';
 import 'services/lock_api_service.dart';
 import 'services/widget_service.dart';
+import 'services/app_settings_service.dart';
 import 'screens/api_config_panel.dart';
 
 enum CameraMode { verify, enroll }
@@ -48,9 +49,13 @@ class _CameraScreenState extends State<CameraScreen>
   // Result tracking for message display
   double _lastDistance = 0.0;
   bool _lastWasSpoof = false;
+  double _lastSpoofScore = 0.0;
 
   // Lock API service
   final LockApiService _lockApi = LockApiService();
+
+  // App settings for demo mode
+  final AppSettingsService _appSettings = AppSettingsService();
 
   @override
   void initState() {
@@ -333,8 +338,11 @@ class _CameraScreenState extends State<CameraScreen>
           );
 
           if (!isReal) {
-            debugPrint('❌ CameraScreen: Frame $frameCount - SPOOF DETECTED');
+            debugPrint(
+              '❌ CameraScreen: Frame $frameCount - SPOOF DETECTED (score: ${pSpoof.toStringAsFixed(4)})',
+            );
             _lastWasSpoof = true;
+            _lastSpoofScore = pSpoof;
             await file.delete();
             await Future.delayed(const Duration(milliseconds: 150));
             continue;
@@ -379,15 +387,16 @@ class _CameraScreenState extends State<CameraScreen>
         await WidgetService.updateVerificationSuccess(grantedName);
 
         if (mounted) {
+          final message = _appSettings.demoMode
+              ? 'ACCESS GRANTED'
+              : 'Granted $grantedName (T: ${_lastDistance.toStringAsFixed(2)})';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
                 children: [
                   const Icon(Icons.check_circle, color: Colors.white),
                   const SizedBox(width: 12),
-                  Text(
-                    'Granted $grantedName (T: ${_lastDistance.toStringAsFixed(2)})',
-                  ),
+                  Text(message),
                 ],
               ),
               backgroundColor: Colors.green,
@@ -399,17 +408,18 @@ class _CameraScreenState extends State<CameraScreen>
         await WidgetService.updateVerificationFailed();
 
         if (mounted) {
+          final message = _appSettings.demoMode
+              ? 'ACCESS DENIED'
+              : (_lastWasSpoof
+                    ? 'Not Granted - Spoof (Score: ${_lastSpoofScore.toStringAsFixed(3)})'
+                    : 'Not Granted (T: ${_lastDistance.toStringAsFixed(2)})');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
                 children: [
                   const Icon(Icons.block, color: Colors.white),
                   const SizedBox(width: 12),
-                  Text(
-                    _lastWasSpoof
-                        ? 'Not Granted (S)'
-                        : 'Not Granted (T: ${_lastDistance.toStringAsFixed(2)})',
-                  ),
+                  Expanded(child: Text(message)),
                 ],
               ),
               backgroundColor: Colors.red,

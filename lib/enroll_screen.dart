@@ -8,6 +8,7 @@ import 'models/user_model.dart';
 import 'services/user_storage_service.dart';
 import 'services/face_recognition_service.dart';
 import 'services/anti_spoofing_service.dart';
+import 'services/app_settings_service.dart';
 
 class EnrollScreen extends StatefulWidget {
   const EnrollScreen({super.key});
@@ -36,6 +37,9 @@ class _EnrollScreenState extends State<EnrollScreen>
   final AntiSpoofingService _antiSpoof = AntiSpoofingService();
   bool _antiSpoofLoaded = false;
   String _enrollmentStatus = '';
+
+  // App settings for demo mode
+  final AppSettingsService _appSettings = AppSettingsService();
 
   @override
   void initState() {
@@ -223,14 +227,16 @@ class _EnrollScreenState extends State<EnrollScreen>
 
           if (isReal) {
             debugPrint(
-              '✅ EnrollScreen: Liveness CONFIRMED on frame $frameCount',
+              '✅ EnrollScreen: Liveness CONFIRMED on frame $frameCount (score: ${pSpoof.toStringAsFixed(4)})',
             );
             livenessConfirmed = true;
             confirmedImage = decodedImage;
             confirmedFile = file;
             break;
           } else {
-            debugPrint('❌ EnrollScreen: Frame $frameCount - spoof detected');
+            debugPrint(
+              '❌ EnrollScreen: Frame $frameCount - spoof detected (score: ${pSpoof.toStringAsFixed(4)})',
+            );
             await file.delete();
           }
         } else {
@@ -275,17 +281,20 @@ class _EnrollScreenState extends State<EnrollScreen>
         );
 
         if (mounted) {
+          final message = _appSettings.demoMode
+              ? 'ACCESS DENIED'
+              : 'Spoof detected - Please use a real face\nTried $frameCount frames in ${stopwatch.elapsed.inSeconds}s';
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Row(
                 children: [
-                  Icon(Icons.block, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text('Please use a real face - spoofs not allowed'),
+                  const Icon(Icons.block, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(message)),
                 ],
               ),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -391,17 +400,20 @@ class _EnrollScreenState extends State<EnrollScreen>
           });
 
           if (mounted) {
+            final message = _appSettings.demoMode
+                ? 'ACCESS DENIED'
+                : 'Spoof detected! Score: ${pSpoof.toStringAsFixed(4)}\nPlease use a real face';
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
+              SnackBar(
                 content: Row(
                   children: [
-                    Icon(Icons.block, color: Colors.white),
-                    SizedBox(width: 12),
-                    Text('Enrollment failed - Please use a real face'),
+                    const Icon(Icons.block, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(message)),
                   ],
                 ),
                 backgroundColor: Colors.red,
-                duration: Duration(seconds: 3),
+                duration: const Duration(seconds: 4),
               ),
             );
           }
