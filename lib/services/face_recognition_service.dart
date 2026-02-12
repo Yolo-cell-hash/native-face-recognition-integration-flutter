@@ -7,14 +7,15 @@ import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'image_preprocessing.dart';
 import 'embedding_storage.dart';
+import 'app_settings_service.dart';
 
 /// Face recognition service that handles TFLite model inference.
 /// Matches Python: TFLiteFaceNet class and related functions
 class FaceRecognitionService {
   static const String _modelPath =
-      'assets/models/transfer-learningv4_int8.tflite';
-  static const int _inputSize = 128;
-  static const double _verificationThreshold = 1.9; // Matching Python threshold
+      'assets/models/transfer-learningv8_int8.tflite';
+  static const int _inputSize = 160;
+  final AppSettingsService _appSettings = AppSettingsService();
   static const double _samePersonThreshold = 0.92; // For enrollment validation
 
   Interpreter? _interpreter;
@@ -315,7 +316,11 @@ class FaceRecognitionService {
     }
 
     // Check threshold
-    if (minDistance < _verificationThreshold) {
+    final threshold = _appSettings.recogThreshold;
+    debugPrint(
+      '🔍 FaceRecognition: Using threshold: ${threshold.toStringAsFixed(2)}',
+    );
+    if (minDistance < threshold) {
       debugPrint(
         '✅ FaceRecognition: Match found: $identifiedPerson (distance: ${minDistance.toStringAsFixed(4)})',
       );

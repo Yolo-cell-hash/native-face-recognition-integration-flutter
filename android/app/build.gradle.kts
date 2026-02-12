@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
+    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -44,6 +45,8 @@ android {
 dependencies {
     // ... other dependencies
     implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0") // Or the version matching your tflite_flutter requirement
+    implementation(platform("com.google.firebase:firebase-bom:34.9.0"))
+    implementation("com.google.firebase:firebase-analytics")
 }
 
 flutter {

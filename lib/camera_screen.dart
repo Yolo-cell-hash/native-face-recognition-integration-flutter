@@ -7,6 +7,7 @@ import 'user_management_screen.dart';
 import 'services/face_recognition_service.dart';
 import 'services/anti_spoofing_service.dart';
 import 'services/lock_api_service.dart';
+import 'services/firebase_rtdb_service.dart';
 import 'services/widget_service.dart';
 import 'services/app_settings_service.dart';
 import 'screens/api_config_panel.dart';
@@ -379,24 +380,31 @@ class _CameraScreenState extends State<CameraScreen>
 
       // Handle result
       if (grantedAccess && grantedName != null) {
-        final (unlockSuccess, unlockMessage) = await _lockApi.unlockDoor();
+        // Trigger lock API + Firebase RTDB in parallel
+        final results = await Future.wait([
+          _lockApi.unlockDoor(),
+          FirebaseRtdbService.triggerUnlock(),
+        ]);
+        final (unlockSuccess, unlockMessage) = results[0];
+        final (fbSuccess, fbMessage) = results[1];
         debugPrint(
           '🔐 CameraScreen: Door unlock: $unlockSuccess - $unlockMessage',
         );
+        debugPrint('🔥 CameraScreen: Firebase RTDB: $fbSuccess - $fbMessage');
 
         await WidgetService.updateVerificationSuccess(grantedName);
 
         if (mounted) {
           final message = _appSettings.demoMode
               ? 'ACCESS GRANTED TO: $grantedName'
-              : 'Granted $grantedName (T: ${_lastDistance.toStringAsFixed(2)})';
+              : 'ACCESS GRANTED TO: $grantedName (T: ${_lastDistance.toStringAsFixed(2)})';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
                 children: [
                   const Icon(Icons.check_circle, color: Colors.white),
                   const SizedBox(width: 12),
-                  Text(message),
+                  Expanded(child: Text(message)),
                 ],
               ),
               backgroundColor: Colors.green,
@@ -408,11 +416,14 @@ class _CameraScreenState extends State<CameraScreen>
         await WidgetService.updateVerificationFailed();
 
         if (mounted) {
-          final message = _appSettings.demoMode
-              ? 'ACCESS DENIED'
-              : (_lastWasSpoof
-                    ? 'Not Granted - Spoof (Score: ${_lastSpoofScore.toStringAsFixed(3)})'
-                    : 'Not Granted (T: ${_lastDistance.toStringAsFixed(2)})');
+          String message;
+          if (_appSettings.demoMode) {
+            message = _lastWasSpoof ? 'ACCESS DENIED - SPOOF' : 'ACCESS DENIED';
+          } else {
+            message = _lastWasSpoof
+                ? 'ACCESS DENIED - SPOOF (Score: ${_lastSpoofScore.toStringAsFixed(3)})'
+                : 'ACCESS DENIED (T: ${_lastDistance.toStringAsFixed(2)})';
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(

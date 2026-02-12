@@ -463,6 +463,68 @@ class _ApiConfigPanelState extends State<ApiConfigPanel> {
 
             const SizedBox(height: 16),
 
+            // Recognition Threshold Slider (T:)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.face, color: Colors.blue, size: 18),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Recognition Threshold (T:)',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _appSettings.recogThreshold.toStringAsFixed(2),
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Slider(
+                    value: _appSettings.recogThreshold,
+                    min: 0.5,
+                    max: 3.0,
+                    divisions: 250,
+                    activeColor: Colors.blue,
+                    inactiveColor: Colors.white24,
+                    label: _appSettings.recogThreshold.toStringAsFixed(2),
+                    onChanged: (value) {
+                      setState(() {
+                        _appSettings.recogThreshold = value;
+                      });
+                    },
+                  ),
+                  Text(
+                    'Lower = Stricter (requires closer face match)',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
             // Demo Mode Toggle
             Container(
               padding: const EdgeInsets.all(16),

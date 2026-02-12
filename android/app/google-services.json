@@ -1,0 +1,201 @@
+{
+  "project_info": {
+    "project_number": "1015524249408",
+    "firebase_url": "https://vdb-poc-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "vdb-poc",
+    "storage_bucket": "vdb-poc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:2d5fe444dc616d49d074a5",
+        "android_client_info": {
+          "package_name": "com.gnb.edge_based_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:55a7253896b27749d074a5",
+        "android_client_info": {
+          "package_name": "com.gnb.godrej_home"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:31309f3d26bd6948d074a5",
+        "android_client_info": {
+          "package_name": "com.gnb.gsld2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:116f45eced268e35d074a5",
+        "android_client_info": {
+          "package_name": "com.gnb.gsld2_base"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:7a18146fbeb9a3b2d074a5",
+        "android_client_info": {
+          "package_name": "com.gnb.home_automation_tablet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:4b2f597802e95e95d074a5",
+        "android_client_info": {
+          "package_name": "com.gnb.sdk_module.host"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:5094b9e7418523cdd074a5",
+        "android_client_info": {
+          "package_name": "com.gnb.sdk_vdp.host"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:c015cac3c6b83bf4d074a5",
+        "android_client_info": {
+          "package_name": "com.godrej"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:ceffc4da3189aeffd074a5",
+        "android_client_info": {
+          "package_name": "com.godrej.vdp_poc_new"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015524249408:android:909d55db5b10adefd074a5",
+        "android_client_info": {
+          "package_name": "com.godrej.vdp_sdk_module.host"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCY7Kk3melgyVzVUcgINkRQMvb_7BepWJc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
