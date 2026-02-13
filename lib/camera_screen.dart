@@ -380,17 +380,22 @@ class _CameraScreenState extends State<CameraScreen>
 
       // Handle result
       if (grantedAccess && grantedName != null) {
-        // Trigger lock API + Firebase RTDB in parallel
+        // Trigger lock API + Firebase RTDB unlock + personalization in parallel
         final results = await Future.wait([
           _lockApi.unlockDoor(),
           FirebaseRtdbService.triggerUnlock(),
+          FirebaseRtdbService.applyPersonalization(grantedName),
         ]);
         final (unlockSuccess, unlockMessage) = results[0];
         final (fbSuccess, fbMessage) = results[1];
+        final (perSuccess, perMessage) = results[2];
         debugPrint(
           '🔐 CameraScreen: Door unlock: $unlockSuccess - $unlockMessage',
         );
         debugPrint('🔥 CameraScreen: Firebase RTDB: $fbSuccess - $fbMessage');
+        debugPrint(
+          '🎨 CameraScreen: Personalization: $perSuccess - $perMessage',
+        );
 
         await WidgetService.updateVerificationSuccess(grantedName);
 

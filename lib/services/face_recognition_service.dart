@@ -131,13 +131,18 @@ class FaceRecognitionService {
         return null;
       }
 
-      // Get first face bounding box
-      final face = faces.first;
+      // Pick the face with the largest bounding box (closest to camera)
+      final face = faces.reduce((a, b) {
+        final areaA = a.boundingBox.width * a.boundingBox.height;
+        final areaB = b.boundingBox.width * b.boundingBox.height;
+        return areaA >= areaB ? a : b;
+      });
       final boundingBox = face.boundingBox;
 
       debugPrint(
-        '👤 FaceRecognition: Face detected at (${boundingBox.left}, ${boundingBox.top}) '
-        'size: ${boundingBox.width}x${boundingBox.height}',
+        '👤 FaceRecognition: ${faces.length} face(s) detected, using largest '
+        '(${boundingBox.width.toInt()}x${boundingBox.height.toInt()}) at '
+        '(${boundingBox.left.toInt()}, ${boundingBox.top.toInt()})',
       );
 
       // Crop face (matching Python: image[y1:y2, x1:x2])
