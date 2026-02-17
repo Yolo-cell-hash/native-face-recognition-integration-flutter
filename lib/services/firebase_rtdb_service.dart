@@ -53,12 +53,12 @@ class FirebaseRtdbService {
     'deodatta': {
       'light': true,
       'light intensity': 255,
-      'light-hex-value': '35,167,78',
+      'light-hex-value': '253, 241, 175',
     },
     'parag': {
       'light': true,
       'light intensity': 150,
-      'light-hex-value': '255,36,120',
+      'light-hex-value': '253, 150, 150',
     },
     'jinay': {
       'light': true,
@@ -91,6 +91,17 @@ class FirebaseRtdbService {
           return (false, 'Failed to set ${entry.key}');
         }
       }
+
+      // Update dev_env/ack with access granted message
+      final ackUrl = Uri.parse('$_dbUrl/dev_env/ack.json');
+      final ackResponse = await http.put(
+        ackUrl,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode('Success-Access granted to $nameLower'),
+      );
+      final ackOk = ackResponse.statusCode == 200;
+      debugPrint('🔥 FirebaseRTDB: dev_env/ack → ${ackOk ? "✅" : "❌"}');
+
       return (true, 'Personalization applied for $nameLower');
     } catch (e) {
       debugPrint('❌ FirebaseRTDB: Personalization error: $e');
