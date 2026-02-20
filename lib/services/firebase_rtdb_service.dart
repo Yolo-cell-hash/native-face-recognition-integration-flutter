@@ -49,24 +49,38 @@ class FirebaseRtdbService {
   /// Per-user automation profiles.
   /// Only listed users get personalization; all others just get unlock_door.
   static final Map<String, Map<String, dynamic>> _userProfiles = {
-    'sd': {'light': true, 'party': true, 'profile': 'sd'},
+    'sd': {
+      'light': true,
+      'party': true,
+      'profile': 'sd',
+      'fan': true,
+      'fan-speed': 5,
+    },
     'deodatta': {
       'light': true,
       'light intensity': 255,
-      'light-hex-value': '253, 241, 175',
+      'light-hex-value': '253, 0, 0',
       'profile': 'deodatta',
+      'party': false,
+      'fan': true,
+      'fan-speed': 1,
     },
     'parag': {
       'light': true,
-      'light intensity': 150,
-      'light-hex-value': '253, 150, 150',
+      'light intensity': 255,
+      'light-hex-value': '0, 255, 0',
       'profile': 'parag',
+      'party': false,
+      'fan': false,
     },
     'jinay': {
       'light': true,
-      'light intensity': 69,
-      'light-hex-value': '69,69,69',
+      'light intensity': 255,
+      'light-hex-value': '0, 0, 255',
       'profile': 'jinay',
+      'party': false,
+      'fan': true,
+      'fan-speed': 3,
     },
   };
 
