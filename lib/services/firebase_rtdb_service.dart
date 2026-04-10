@@ -46,60 +46,44 @@ class FirebaseRtdbService {
     return response.statusCode == 200;
   }
 
-  /// Per-user automation profiles.
-  /// Only listed users get personalization; all others just get unlock_door.
-  static final Map<String, Map<String, dynamic>> _userProfiles = {
-    'sd': {
-      'light': true,
-      'party': true,
-      'profile': 'sd',
-      'fan': true,
-      'fan-speed': 5,
-    },
-    'deodatta': {
-      'light': true,
-      'light intensity': 255,
-      'light-hex-value': '253, 0, 0',
-      'profile': 'deodatta',
-      'party': false,
-      'fan': true,
-      'fan-speed': 1,
-    },
-    'parag': {
-      'light': true,
-      'light intensity': 255,
-      'light-hex-value': '0, 255, 0',
-      'profile': 'parag',
-      'party': false,
-      'fan': false,
-    },
-    'jinay': {
-      'light': true,
-      'light intensity': 255,
-      'light-hex-value': '0, 0, 255',
-      'profile': 'jinay',
-      'party': false,
-      'fan': true,
-      'fan-speed': 3,
-    },
-  };
+  /// Fetch preset for a user from /presets/{username} in Firebase RTDB.
+  /// Returns null if the user has no preset entry.
+  static Future<Map<String, dynamic>?> _fetchUserPreset(String username) async {
+    final url = Uri.parse('$_dbUrl/presets/$username.json');
+    final response = await http.get(url);
+    if (response.statusCode == 200 && response.body != 'null') {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    }
+    return null;
+  }
 
-  /// Apply per-user personalization flags (if a profile exists).
+  /// Apply per-user personalization flags by reading from /presets/{username}.
+  /// If the user exists in /presets, each key-value pair is written to
+  /// /automation-flags. If the user is not listed, personalization is skipped.
   /// Call this alongside triggerUnlock() when access is granted.
   static Future<(bool, String)> applyPersonalization(String username) async {
     final nameLower = username.toLowerCase();
-    final profile = _userProfiles[nameLower];
-
-    if (profile == null) {
-      debugPrint(
-        '🔥 FirebaseRTDB: No personalization profile for "$nameLower"',
-      );
-      return (true, 'No profile for $nameLower');
-    }
 
     try {
-      debugPrint('🔥 FirebaseRTDB: Applying profile for "$nameLower"');
-      for (final entry in profile.entries) {
+      // Fetch the user's preset from Firebase /presets/{username}
+      final preset = await _fetchUserPreset(nameLower);
+
+      if (preset == null || preset.isEmpty) {
+        debugPrint(
+          '🔥 FirebaseRTDB: No preset found for "$nameLower" – skipping personalization',
+        );
+        return (true, 'No preset for $nameLower');
+      }
+
+      debugPrint(
+        '🔥 FirebaseRTDB: Preset found for "$nameLower" – applying ${preset.length} fields',
+      );
+
+      // Write each preset parameter to /automation-flags
+      for (final entry in preset.entries) {
         final ok = await _setField(entry.key, entry.value);
         debugPrint(
           '🔥 FirebaseRTDB: ${entry.key} = ${entry.value} → ${ok ? "✅" : "❌"}',
@@ -108,6 +92,12 @@ class FirebaseRtdbService {
           return (false, 'Failed to set ${entry.key}');
         }
       }
+
+      // Update /automation-flags/profile with the matched username
+      final profileOk = await _setField('profile', nameLower);
+      debugPrint(
+        '🔥 FirebaseRTDB: profile = $nameLower → ${profileOk ? "✅" : "❌"}',
+      );
 
       // Update dev_env/ack with access granted message
       final ackUrl = Uri.parse('$_dbUrl/dev_env/ack.json');

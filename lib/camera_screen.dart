@@ -378,27 +378,9 @@ class _CameraScreenState extends State<CameraScreen>
         '🔴 CameraScreen: Multi-frame complete - $frameCount frames in ${stopwatch.elapsed.inMilliseconds}ms',
       );
 
-      // Handle result
+      // Handle result - show UI feedback FIRST, then fire background tasks
       if (grantedAccess && grantedName != null) {
-        // Trigger lock API + Firebase RTDB unlock + personalization in parallel
-        final results = await Future.wait([
-          _lockApi.unlockDoor(),
-          FirebaseRtdbService.triggerUnlock(),
-          FirebaseRtdbService.applyPersonalization(grantedName),
-        ]);
-        final (unlockSuccess, unlockMessage) = results[0];
-        final (fbSuccess, fbMessage) = results[1];
-        final (perSuccess, perMessage) = results[2];
-        debugPrint(
-          '🔐 CameraScreen: Door unlock: $unlockSuccess - $unlockMessage',
-        );
-        debugPrint('🔥 CameraScreen: Firebase RTDB: $fbSuccess - $fbMessage');
-        debugPrint(
-          '🎨 CameraScreen: Personalization: $perSuccess - $perMessage',
-        );
-
-        await WidgetService.updateVerificationSuccess(grantedName);
-
+        // 🔴 Show ACCESS GRANTED immediately (before any network calls)
         if (mounted) {
           final message = _appSettings.demoMode
               ? 'ACCESS GRANTED TO: $grantedName'
@@ -417,9 +399,34 @@ class _CameraScreenState extends State<CameraScreen>
             ),
           );
         }
-      } else {
-        await WidgetService.updateVerificationFailed();
 
+        // 🔴 Fire background tasks AFTER showing UI (non-blocking)
+        Future.wait([
+              _lockApi.unlockDoor(),
+              FirebaseRtdbService.triggerUnlock(),
+              FirebaseRtdbService.applyPersonalization(grantedName),
+            ])
+            .then((results) {
+              final (unlockSuccess, unlockMessage) = results[0];
+              final (fbSuccess, fbMessage) = results[1];
+              final (perSuccess, perMessage) = results[2];
+              debugPrint(
+                '🔐 CameraScreen: Door unlock: $unlockSuccess - $unlockMessage',
+              );
+              debugPrint(
+                '🔥 CameraScreen: Firebase RTDB: $fbSuccess - $fbMessage',
+              );
+              debugPrint(
+                '🎨 CameraScreen: Personalization: $perSuccess - $perMessage',
+              );
+            })
+            .catchError((e) {
+              debugPrint('❌ CameraScreen: Background tasks error: $e');
+            });
+
+        WidgetService.updateVerificationSuccess(grantedName);
+      } else {
+        // 🔴 Show ACCESS DENIED immediately
         if (mounted) {
           String message;
           if (_appSettings.demoMode) {
@@ -443,6 +450,8 @@ class _CameraScreenState extends State<CameraScreen>
             ),
           );
         }
+
+        WidgetService.updateVerificationFailed();
       }
     } catch (e, stackTrace) {
       debugPrint('❌ CameraScreen: Error during multi-frame verification: $e');
