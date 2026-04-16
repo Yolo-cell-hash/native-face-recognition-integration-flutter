@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'ac_api_service.dart';
 
 /// Lightweight Firebase RTDB service using REST API.
 /// Sets /unlock_door to true on access granted.
@@ -108,6 +109,16 @@ class FirebaseRtdbService {
       );
       final ackOk = ackResponse.statusCode == 200;
       debugPrint('🔥 FirebaseRTDB: dev_env/ack → ${ackOk ? "✅" : "❌"}');
+
+      // ────────── AC control from preset ──────────
+      // Check if preset has any AC keys and forward to AC API
+      final acKeys = ['ac', 'ac-fan-speed', 'ac-mode', 'ac-temp'];
+      final hasAcPreset = acKeys.any((k) => preset.containsKey(k));
+      if (hasAcPreset) {
+        debugPrint('❄️ FirebaseRTDB: AC keys found in preset – applying via AC API');
+        final (acOk, acMsg) = await AcApiService().applyPreset(preset);
+        debugPrint('❄️ FirebaseRTDB: AC result: $acOk – $acMsg');
+      }
 
       return (true, 'Personalization applied for $nameLower');
     } catch (e) {

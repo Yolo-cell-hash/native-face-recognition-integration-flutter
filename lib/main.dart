@@ -3,6 +3,7 @@ import 'package:app_links/app_links.dart';
 import 'camera_screen.dart';
 import 'services/widget_service.dart';
 import 'services/app_settings_service.dart';
+import 'services/ac_api_service.dart';
 
 void main() async {
   debugPrint('🚀 App: Starting Godrej Advantis IoT9 application...');
@@ -14,6 +15,10 @@ void main() async {
   // Initialize app settings (threshold, demo mode)
   await AppSettingsService().initialize();
   debugPrint('🚀 App: App settings initialized');
+
+  // Initialize AC API service (login + 45-min token refresh)
+  await AcApiService().initialize();
+  debugPrint('🚀 App: AC API service initialized');
 
   // Initialize widget service
   await WidgetService.initialize();
@@ -67,6 +72,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         debugPrint('🚀 App: App resumed - updating widget to ready state');
         WidgetService.updateWidgetReady();
+        AcApiService().initialize(); // refresh AC token on resume
         break;
       case AppLifecycleState.paused:
         debugPrint('🚀 App: App paused');
