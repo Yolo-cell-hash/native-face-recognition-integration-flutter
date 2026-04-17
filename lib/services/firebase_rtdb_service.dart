@@ -83,8 +83,20 @@ class FirebaseRtdbService {
         '🔥 FirebaseRTDB: Preset found for "$nameLower" – applying ${preset.length} fields',
       );
 
+      // ────────── AC control from preset (FIRST for faster response) ──────────
+      // AC APIs are called before writing other fields to avoid delay
+      final acKeys = ['ac', 'ac-fan-speed', 'ac-mode', 'ac-temp'];
+      final hasAcPreset = acKeys.any((k) => preset.containsKey(k));
+      if (hasAcPreset) {
+        debugPrint('❄️ FirebaseRTDB: AC keys found in preset – applying via AC API');
+        final (acOk, acMsg) = await AcApiService().applyPreset(preset);
+        debugPrint('❄️ FirebaseRTDB: AC result: $acOk – $acMsg');
+      }
+
       // Write each preset parameter to /automation-flags
+      // (skip AC keys – they are handled by the AC API above)
       for (final entry in preset.entries) {
+        if (acKeys.contains(entry.key)) continue;
         final ok = await _setField(entry.key, entry.value);
         debugPrint(
           '🔥 FirebaseRTDB: ${entry.key} = ${entry.value} → ${ok ? "✅" : "❌"}',
@@ -109,16 +121,6 @@ class FirebaseRtdbService {
       );
       final ackOk = ackResponse.statusCode == 200;
       debugPrint('🔥 FirebaseRTDB: dev_env/ack → ${ackOk ? "✅" : "❌"}');
-
-      // ────────── AC control from preset ──────────
-      // Check if preset has any AC keys and forward to AC API
-      final acKeys = ['ac', 'ac-fan-speed', 'ac-mode', 'ac-temp'];
-      final hasAcPreset = acKeys.any((k) => preset.containsKey(k));
-      if (hasAcPreset) {
-        debugPrint('❄️ FirebaseRTDB: AC keys found in preset – applying via AC API');
-        final (acOk, acMsg) = await AcApiService().applyPreset(preset);
-        debugPrint('❄️ FirebaseRTDB: AC result: $acOk – $acMsg');
-      }
 
       return (true, 'Personalization applied for $nameLower');
     } catch (e) {

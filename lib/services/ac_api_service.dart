@@ -12,8 +12,12 @@ class AcApiService {
 
   static const String _loginUrl =
       'https://14uv336e1j.execute-api.ap-south-1.amazonaws.com/dev/v1/login2';
-  static const String _controlUrl =
-      'https://14uv336e1j.execute-api.ap-south-1.amazonaws.com/dev/v1/user/nodes/params?node_id=JTf6KXVV9B4DQ56xXVTjBj';
+  static const String _controlBaseUrl =
+      'https://14uv336e1j.execute-api.ap-south-1.amazonaws.com/dev/v1/user/nodes/params';
+  static const String _nodeIdUrl =
+      'https://vdb-poc-default-rtdb.asia-southeast1.firebasedatabase.app/automation-flags/ac-node-id.json';
+
+  String? _cachedNodeId;
 
   static const String _userName = '+918268667702';
   static const String _password = 'Keyoor@97';
@@ -84,15 +88,43 @@ class AcApiService {
     return await _login();
   }
 
+  /// Fetch the AC node ID from Firebase RTDB.
+  Future<String?> _fetchNodeId() async {
+    if (_cachedNodeId != null) return _cachedNodeId;
+    try {
+      debugPrint('❄️ AcAPI: Fetching ac-node-id from Firebase...');
+      final response = await http.get(Uri.parse(_nodeIdUrl));
+      if (response.statusCode == 200 && response.body != 'null') {
+        // Firebase REST returns JSON-encoded string (with quotes)
+        final decoded = jsonDecode(response.body);
+        if (decoded is String && decoded.isNotEmpty) {
+          _cachedNodeId = decoded;
+          debugPrint('✅ AcAPI: ac-node-id = $_cachedNodeId');
+          return _cachedNodeId;
+        }
+      }
+      debugPrint('❌ AcAPI: Failed to fetch ac-node-id (${response.statusCode})');
+    } catch (e) {
+      debugPrint('❌ AcAPI: Error fetching ac-node-id: $e');
+    }
+    return null;
+  }
+
   /// Send a single AC parameter update.
   Future<bool> _putAcParam(Map<String, dynamic> acBody) async {
     if (!await _ensureToken()) {
       debugPrint('❌ AcAPI: No valid token – skipping AC command');
       return false;
     }
+    final nodeId = await _fetchNodeId();
+    if (nodeId == null) {
+      debugPrint('❌ AcAPI: No node ID available – skipping AC command');
+      return false;
+    }
     try {
+      final controlUrl = '$_controlBaseUrl?node_id=$nodeId';
       final response = await http.put(
-        Uri.parse(_controlUrl),
+        Uri.parse(controlUrl),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': _accessToken!,
@@ -127,6 +159,8 @@ class AcApiService {
 
   /// Apply a full preset map from Firebase (keys: ac, ac-fan-speed, ac-mode, ac-temp).
   /// Each parameter is sent as a separate API call since the API supports one at a time.
+  /// If ac is false (power off), only the power-off command is sent – other params are
+  /// skipped to prevent the AC from turning back on.
   Future<(bool, String)> applyPreset(Map<String, dynamic> preset) async {
     debugPrint('❄️ AcAPI: Applying preset: $preset');
 
@@ -135,10 +169,20 @@ class AcApiService {
     final acMode = preset['ac-mode'];
     final acTemp = preset['ac-temp'];
 
+    // Determine whether AC should be on or off
+    final bool powerOn = acPower is bool ? acPower : acPower == true;
+
     // Power
     if (acPower != null) {
-      final ok = await setPower(acPower is bool ? acPower : acPower == true);
+      final ok = await setPower(powerOn);
       if (!ok) return (false, 'Failed to set AC power');
+    }
+
+    // If AC is being turned OFF, skip all other parameters.
+    // Sending fan-speed / mode / temp after power-off would turn the AC back on.
+    if (!powerOn) {
+      debugPrint('❄️ AcAPI: AC power is OFF – skipping fan/mode/temp');
+      return (true, 'AC powered off');
     }
 
     // Fan speed
